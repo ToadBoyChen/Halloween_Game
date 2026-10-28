@@ -233,6 +233,10 @@ function SettingsForm({ s, call }: { s: View; call: Call }) {
         <input type="checkbox" checked={s.settings.bloodMoon} onChange={(e) => set({ bloodMoon: e.target.checked })} />
         Blood Moon sabotage
       </label>
+      <label style={{ display: "flex", gap: 10, alignItems: "center" }}>
+        <input type="checkbox" checked={s.settings.scares} onChange={(e) => set({ scares: e.target.checked })} />
+        Jump scares on the TV (turn off for little kids)
+      </label>
     </Section>
   );
 }

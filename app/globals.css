@@ -3,7 +3,7 @@
 :root {
   --bg: #050203;
   --ink: #d9cfc1;
-  --dim: #8a7d70;
+  --dim: #b0a294;
   --faint: #4a3f38;
   --blood: #b3001b;
   --blood-bright: #ff1f3d;
@@ -12,7 +12,8 @@
   --panel: rgba(20, 8, 10, 0.72);
   --line: rgba(179, 0, 27, 0.35);
   --creep: var(--font-creep), "Creepster", cursive;
-  --body: var(--font-body), Georgia, serif;
+  --body: var(--font-body), system-ui, sans-serif;
+  --flavor-font: var(--font-flavor), Georgia, serif;
 }
 
 html,
@@ -37,6 +38,11 @@ button:disabled {
   font-family: var(--creep);
   letter-spacing: 0.04em;
   font-weight: 400;
+}
+
+.flavor {
+  font-family: var(--flavor-font);
+  font-style: italic;
 }
 
 .blood {
@@ -160,20 +166,100 @@ button:disabled {
   100% { transform: translate(2px, -1px); text-shadow: 2px 0 #f00, -2px 0 #0ff; }
 }
 
+/* Souls: a glowing core inside two swirling aura rings. --c = color, --s = size. */
 .soul {
+  position: relative;
   display: inline-block;
-  border-radius: 50% 50% 45% 45%;
-  box-shadow: 0 0 14px currentColor;
+  flex: none;
+  width: var(--s);
+  height: var(--s);
+}
+.soul .core {
+  position: absolute;
+  inset: 8%;
+  border-radius: 50%;
+  /* bright heart fading out to nothing: a glow, not a ball */
+  background: radial-gradient(
+    circle at 50% 46%,
+    #fff 0%,
+    color-mix(in srgb, var(--c) 40%, #fff) 12%,
+    var(--c) 30%,
+    color-mix(in srgb, var(--c) 45%, transparent) 52%,
+    transparent 70%
+  );
+  box-shadow: 0 0 calc(var(--s) * 0.5) color-mix(in srgb, var(--c) 35%, transparent);
+  animation: soul-breathe 3.2s ease-in-out infinite;
+  animation-delay: inherit;
+}
+.soul .aura {
+  position: absolute;
+  inset: -22%;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, transparent 0%, var(--c) 12%, transparent 30%, transparent 48%, var(--c) 62%, transparent 82%);
+  -webkit-mask: radial-gradient(circle, transparent 26%, #000 42%, transparent 70%);
+  mask: radial-gradient(circle, transparent 26%, #000 42%, transparent 70%);
+  filter: blur(calc(var(--s) * 0.06));
+  opacity: 0.95;
+  animation: soul-spin 4s linear infinite;
+  animation-delay: inherit;
+}
+.soul .aura.two {
+  inset: -45%;
+  opacity: 0.5;
+  animation-duration: 7s;
+  animation-direction: reverse;
+}
+.soul .wisp {
+  position: absolute;
+  left: 50%;
+  bottom: 60%;
+  width: 22%;
+  height: 22%;
+  margin-left: -11%;
+  border-radius: 50%;
+  background: var(--c);
+  filter: blur(calc(var(--s) * 0.05));
+  opacity: 0;
+  animation: soul-wisp 2.8s ease-out infinite;
+  animation-delay: inherit;
+}
+@keyframes soul-spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes soul-breathe {
+  50% {
+    transform: scale(1.12);
+    box-shadow: 0 0 calc(var(--s) * 0.9) color-mix(in srgb, var(--c) 50%, transparent);
+  }
+}
+@keyframes soul-wisp {
+  0% { transform: translate(0, 0) scale(1); opacity: 0; }
+  20% { opacity: 0.8; }
+  100% { transform: translate(calc(var(--s) * 0.15), calc(var(--s) * -0.9)) scale(0.2); opacity: 0; }
+}
+/* A dead soul: a faint, dashed, still outline */
+.soul.dead .core {
+  inset: 18%;
+  background: transparent;
+  border: 2px dashed var(--c);
+  box-shadow: none;
+  opacity: 0.5;
+  animation: none;
+}
+.soul.dead .aura,
+.soul.dead .wisp {
+  display: none;
 }
 
 .btn {
+  min-height: 56px;
   border: 1px solid var(--line);
   background: linear-gradient(180deg, rgba(60, 10, 16, 0.8), rgba(25, 5, 8, 0.9));
   color: var(--ink);
   border-radius: 10px;
   padding: 14px 18px;
-  font-size: 1.1rem;
-  font-weight: 600;
+  font-size: 1.15rem;
+  font-weight: 800;
   transition: transform 0.1s, border-color 0.2s, opacity 0.2s;
 }
 .btn:active:not(:disabled) {
@@ -308,4 +394,263 @@ button:disabled {
   text-align: center;
   padding: 24px;
   background: rgba(10, 0, 2, 0.94);
+}
+
+/* ─── Creepy details ────────────────────────────────────── */
+
+/* Rolling fog banks: each tile is half the element width, so sliding by -50% loops seamlessly. */
+.fogbank {
+  position: absolute;
+  left: 0;
+  width: 200%;
+  background-image:
+    radial-gradient(ellipse 22% 42% at 15% 70%, rgba(205, 200, 210, 0.4), transparent 70%),
+    radial-gradient(ellipse 30% 36% at 48% 82%, rgba(185, 180, 190, 0.34), transparent 70%),
+    radial-gradient(ellipse 20% 46% at 80% 72%, rgba(210, 205, 212, 0.32), transparent 70%);
+  background-size: 50% 100%;
+  background-repeat: repeat-x;
+  filter: blur(16px);
+  will-change: transform;
+}
+.fogbank.low {
+  bottom: -8%;
+  height: 42%;
+  animation: roll 55s linear infinite;
+}
+.fogbank.mid {
+  bottom: 8%;
+  height: 38%;
+  opacity: 0.55;
+  animation: roll 85s linear infinite reverse;
+}
+.fogbank.high {
+  top: -12%;
+  height: 40%;
+  opacity: 0.3;
+  animation: roll 130s linear infinite;
+}
+@keyframes roll {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+.ember {
+  position: absolute;
+  bottom: -10px;
+  border-radius: 50%;
+  background: #ffae4a;
+  box-shadow: 0 0 6px #ff7a1a, 0 0 14px rgba(255, 90, 20, 0.6);
+  animation-name: rise;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+  opacity: 0;
+}
+@keyframes rise {
+  0% { transform: translate(0, 0); opacity: 0; }
+  10% { opacity: 0.9; }
+  70% { opacity: 0.6; }
+  100% { transform: translate(var(--drift), -105vh); opacity: 0; }
+}
+
+.eyes {
+  position: absolute;
+  display: flex;
+  gap: 14px;
+  opacity: 0;
+  animation-name: eyes;
+  animation-iteration-count: infinite;
+  animation-timing-function: ease-in-out;
+}
+.eyes span {
+  width: 14px;
+  height: 7px;
+  border-radius: 50%;
+  background: radial-gradient(ellipse, #ffd23a 0%, #ff3a1a 55%, transparent 75%);
+  box-shadow: 0 0 10px rgba(255, 60, 20, 0.8);
+  animation: inherit;
+  animation-name: blink;
+}
+@keyframes eyes {
+  0%, 62% { opacity: 0; }
+  68%, 88% { opacity: 0.85; }
+  94%, 100% { opacity: 0; }
+}
+@keyframes blink {
+  0%, 74%, 77%, 82%, 85%, 100% { transform: scaleY(1); }
+  75.5%, 83.5% { transform: scaleY(0.1); }
+}
+
+.bat {
+  position: absolute;
+  left: 0;
+  animation: bat-fly 38s linear infinite;
+  transform: translateX(-12vw);
+}
+.bat-wings {
+  width: 100%;
+  animation: flap 0.22s ease-in-out infinite alternate;
+  filter: drop-shadow(0 0 2px rgba(255, 60, 60, 0.35));
+}
+@keyframes bat-fly {
+  0% { transform: translate(-12vw, 0); }
+  4% { transform: translate(25vw, -4vh); }
+  8% { transform: translate(60vw, 3vh); }
+  12% { transform: translate(112vw, -6vh); }
+  100% { transform: translate(112vw, -6vh); }
+}
+@keyframes flap {
+  from { transform: scaleY(1); }
+  to { transform: scaleY(0.35); }
+}
+
+.spider {
+  position: absolute;
+  top: 0;
+  right: 14%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  animation: spider-drop 26s ease-in-out infinite;
+  transform: translateY(-100%);
+}
+.spider .thread {
+  width: 1px;
+  height: 30vh;
+  background: linear-gradient(rgba(220, 215, 205, 0.1), rgba(220, 215, 205, 0.4));
+}
+.spider svg {
+  margin-top: -6px;
+  animation: spider-sway 3s ease-in-out infinite alternate;
+  transform-origin: top center;
+}
+@keyframes spider-drop {
+  0%, 55% { transform: translateY(-100%); }
+  65%, 85% { transform: translateY(-40%); }
+  70% { transform: translateY(-46%); }
+  100% { transform: translateY(-100%); }
+}
+@keyframes spider-sway {
+  from { transform: rotate(-6deg); }
+  to { transform: rotate(6deg); }
+}
+
+.cobweb {
+  position: absolute;
+  top: 0;
+}
+
+.lightning {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at 30% 0%, rgba(210, 220, 255, 0.5), rgba(180, 190, 255, 0.08) 60%, transparent);
+  opacity: 0;
+  animation: lightning 41s infinite;
+  mix-blend-mode: screen;
+}
+@keyframes lightning {
+  0%, 91%, 93.4%, 94.6%, 100% { opacity: 0; }
+  91.4% { opacity: 0.9; }
+  92% { opacity: 0.1; }
+  92.6% { opacity: 0.7; }
+  94% { opacity: 0.35; }
+}
+
+/* Phones: lighter effects so low-end devices stay smooth */
+@media (max-width: 700px) {
+  .fogbank { filter: blur(10px); }
+  .fogbank.low { opacity: 0.7; }
+  .fogbank.mid { opacity: 0.3; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fogbank, .ember, .eyes, .bat, .spider, .lightning, .grain, .glitch, .shake, .flicker, .soul * { animation: none !important; }
+  .ember, .eyes, .bat, .spider, .lightning { display: none; }
+}
+
+/* ─── Big, clear phone controls ─────────────────────────── */
+
+.action {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  text-align: left;
+  min-height: 72px;
+}
+.action .icon {
+  font-size: 2rem;
+  line-height: 1;
+  width: 2.4rem;
+  text-align: center;
+}
+.action small {
+  display: block;
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--dim);
+}
+
+/* ─── Soul picker (swipe carousel) ──────────────────────── */
+
+.picker {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  padding: 18px 0 8px;
+  touch-action: pan-y;
+}
+.picker .stage {
+  height: 190px;
+  display: grid;
+  place-items: center;
+}
+.picker .slide-next {
+  animation: slide-next 0.35s ease-out both;
+}
+.picker .slide-prev {
+  animation: slide-prev 0.35s ease-out both;
+}
+@keyframes slide-next {
+  from { transform: translateX(70px) scale(0.7); opacity: 0; filter: blur(6px); }
+  to { transform: none; opacity: 1; filter: none; }
+}
+@keyframes slide-prev {
+  from { transform: translateX(-70px) scale(0.7); opacity: 0; filter: blur(6px); }
+  to { transform: none; opacity: 1; filter: none; }
+}
+.picker .arrow {
+  position: absolute;
+  top: 100px;
+  transform: translateY(-50%);
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: rgba(0, 0, 0, 0.5);
+  color: var(--ink);
+  font-size: 2.4rem;
+  font-weight: 800;
+  line-height: 1;
+}
+.picker .arrow.left { left: 0; }
+.picker .arrow.right { right: 0; }
+.picker .dots {
+  display: flex;
+  gap: 7px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.picker .dots span {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--c);
+  opacity: 0.3;
+  transition: opacity 0.2s, transform 0.2s;
+}
+.picker .dots span.on {
+  opacity: 1;
+  transform: scale(1.4);
+  box-shadow: 0 0 8px var(--c);
 }

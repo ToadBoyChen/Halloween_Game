@@ -4,6 +4,10 @@ const nextConfig: NextConfig = {
   /* config options here */
   cacheComponents: true,
   partialPrefetching: true,
+  // Any device opening the site goes straight to the join screen. The TV uses /hub.
+  redirects() {
+    return [{ source: "/", destination: "/play", permanent: false }];
+  },
   turbopack: {
     rules: {
       "*.css": {

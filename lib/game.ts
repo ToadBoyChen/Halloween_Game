@@ -30,6 +30,7 @@ export type Player = {
   tasks: { id: string; done: boolean }[];
   bellsUsed: number;
   lastKillAt: number;
+  bot?: boolean; // test bot (see lib/testing.ts)
 };
 
 export type Meeting = {
@@ -232,13 +233,13 @@ export function advance(g: Game, now: number): boolean {
 // ─── Player actions ──────────────────────────────────────────
 
 export function join(g: Game, name: string, color: string) {
-  if (g.phase !== "lobby") fail("The ritual has already begun. Wait for the next game.");
+  if (g.phase !== "lobby") fail("A game is already running. Join the next one!");
   name = name.trim().slice(0, 16);
-  if (!name) fail("Your soul needs a name.");
-  if (g.players.length >= MAX_PLAYERS) fail("The house is full.");
+  if (!name) fail("Type your name first.");
+  if (g.players.length >= MAX_PLAYERS) fail("The game is full.");
   if (g.players.some((p) => p.name.toLowerCase() === name.toLowerCase())) fail("That name is taken.");
-  if (!SOUL_COLORS.some((c) => c.id === color)) fail("Choose a soul color.");
-  if (g.players.some((p) => p.color === color)) fail("That color is taken.");
+  if (!SOUL_COLORS.some((c) => c.id === color)) fail("Pick a color.");
+  if (g.players.some((p) => p.color === color)) fail("Someone already has that color.");
   const player: Player = {
     id: crypto.randomUUID().slice(0, 8),
     token: crypto.randomUUID(),
@@ -270,13 +271,13 @@ export function act(g: Game, p: Player, a: Action, now: number) {
   const playing = g.phase === "playing";
   switch (a.type) {
     case "leave":
-      if (g.phase !== "lobby") fail("You can't leave mid-game.");
+      if (g.phase !== "lobby") fail("You can't leave during a game.");
       g.players = g.players.filter((x) => x.id !== p.id);
       return;
 
     case "task": {
       if (!playing) fail("Not now.");
-      const t = p.tasks.find((x) => x.id === a.id) ?? fail("That ritual isn't yours.");
+      const t = p.tasks.find((x) => x.id === a.id) ?? fail("That isn't your task.");
       t.done = a.done;
       checkAndEnd(g);
       return;
@@ -284,23 +285,23 @@ export function act(g: Game, p: Player, a: Action, now: number) {
 
     case "claimed":
       if (!playing) fail("Not now.");
-      if (!p.alive) fail("You are already dead.");
-      if (p.role === "traitor") fail("The Possessed cannot be claimed.");
+      if (!p.alive) fail("You are already a ghost.");
+      if (p.role === "traitor") fail("The Possessed can't be caught.");
       p.alive = false;
       checkAndEnd(g);
       return;
 
     case "kill":
       if (!playing || p.role !== "traitor" || !p.alive) fail("Not now.");
-      if (now < p.lastKillAt + g.settings.killCooldown * 1000) fail("Your hunger is not ready.");
+      if (now < p.lastKillAt + g.settings.killCooldown * 1000) fail("Not yet. Wait for the timer.");
       p.lastKillAt = now;
       return;
 
     case "report":
     case "bell":
       if (!playing) fail("Not now.");
-      if (!p.alive) fail("Spirits cannot speak.");
-      if (g.bloodMoon.active) fail("The Blood Moon silences the bell.");
+      if (!p.alive) fail("Ghosts can't do that.");
+      if (g.bloodMoon.active) fail("No meetings during the Blood Moon!");
       if (a.type === "bell") {
         if (p.bellsUsed >= g.settings.bellsPerPlayer) fail("You have no bells left.");
         p.bellsUsed++;
@@ -311,10 +312,10 @@ export function act(g: Game, p: Player, a: Action, now: number) {
     case "vote": {
       const m = g.meeting;
       if (g.phase !== "meeting" || m?.stage !== "voting") fail("Voting is closed.");
-      if (!p.alive) fail("Spirits cannot vote.");
-      if (m!.votes[p.id]) fail("Your vote is already sealed.");
+      if (!p.alive) fail("Ghosts can't vote.");
+      if (m!.votes[p.id]) fail("You already voted.");
       if (a.target !== "skip" && !g.players.some((x) => x.id === a.target && x.alive))
-        fail("They cannot be voted for.");
+        fail("You can't vote for them.");
       m!.votes[p.id] = a.target;
       const voters = g.players.filter((x) => x.alive);
       if (voters.every((x) => m!.votes[x.id])) resolveVotes(g, now);
@@ -324,10 +325,10 @@ export function act(g: Game, p: Player, a: Action, now: number) {
     case "summon": {
       const bm = g.bloodMoon;
       if (!playing || p.role !== "traitor") fail("Not now.");
-      if (!g.settings.bloodMoon) fail("The Blood Moon sleeps tonight.");
+      if (!g.settings.bloodMoon) fail("The Blood Moon is turned off.");
       if (bm.active) fail("The Blood Moon is already rising.");
       const readyAt = summonReadyAt(g);
-      if (now < readyAt) fail("The moon is not ready.");
+      if (now < readyAt) fail("The Blood Moon isn't ready yet.");
       let choices = BLOOD_MOON.seals.map((_, i) => i).filter((i) => !bm.used.includes(i));
       if (choices.length === 0) {
         bm.used = [];
@@ -353,7 +354,7 @@ const normalize = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, "");
 
 // Entered at the hub. Returns true if the Blood Moon was stopped.
 export function altar(g: Game, code: string, now: number) {
-  if (g.phase !== "playing" || !g.bloodMoon.active) fail("The altar is silent.");
+  if (g.phase !== "playing" || !g.bloodMoon.active) fail("There is no Blood Moon right now.");
   const [a, b] = BLOOD_MOON.seals[g.bloodMoon.seal].cards.map((c) => normalize(c.card));
   const input = normalize(code);
   if (input === a + b || input === b + a) {

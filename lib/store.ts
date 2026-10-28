@@ -1,4 +1,5 @@
 import { Redis } from "@upstash/redis";
+import { DEFAULT_SETTINGS } from "@/config/game";
 import { advance, newGame, type Game } from "./game";
 
 // The whole game is one JSON document. Writes use compare-and-swap on a
@@ -24,6 +25,12 @@ return 0`;
 const mem = globalThis as unknown as { __possessed?: string };
 
 async function load(): Promise<Game> {
+  const g = await loadRaw();
+  g.settings = { ...DEFAULT_SETTINGS, ...g.settings }; // pick up settings added since the game was saved
+  return g;
+}
+
+async function loadRaw(): Promise<Game> {
   if (!redis) {
     if (process.env.NODE_ENV === "production" && !process.env.POSSESSED_MEMORY_STORE) {
       throw new Error("Redis is not configured. Add Upstash Redis to the Vercel project.");

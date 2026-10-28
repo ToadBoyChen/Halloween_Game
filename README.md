@@ -30,6 +30,19 @@ A physical, phone-driven social deduction game for a Halloween party. The hub (`
 3. Optionally set `HOST_PIN`.
 4. Redeploy.
 
+## Testing alone (live or local)
+
+Open `/test` on your phone and enter the host PIN. You can then:
+
+1. Join as yourself at `/play` (in another tab or on another device). Optionally open `/hub` on a laptop.
+2. Tap **Add 5 bots** (bots count toward the 6-player minimum) and **Fast timers**.
+3. Tap **Start: I'm Possessed** or **Start: I'm Mortal**.
+4. Use the bot buttons to do tasks, kill, report, ring the bell and vote. **Blood Moon now** skips the wait, and the page shows the card code.
+
+Every button is also a URL, e.g. `/api/test?pin=1031&do=bots&n=5`. Actions: `bots` (n), `clearbots`, `fast`, `start` (role, name), `role`, `skip`, `cooldowns`, `moon`, `code`, `bottasks` (pct), `botkill` (name), `botreport`, `botbell`, `botvote` (target = name | skip | random), `lobby`, `reset`, `state`.
+
+Set `TEST_TOOLS=off` in Vercel to disable them for the party.
+
 ## Local development
 
 ```bash

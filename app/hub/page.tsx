@@ -12,7 +12,7 @@ export default function HubPage() {
   return mounted ? <Hub /> : <Atmos />;
 }
 
-const SCARES = ["I SEE YOU", "BEHIND YOU", "ONE OF YOU IS LYING", "DON'T TURN AROUND", "IT'S IN THE ROOM", "SOON"];
+const SCARES = ["I SEE YOU", "BEHIND YOU…", "WHO IS IT?", "DON'T TURN AROUND", "IT'S IN THE ROOM", "BOO!"];
 
 function Hub() {
   const { state: s, offline, accept, serverNow } = useGame(null);
@@ -55,7 +55,7 @@ function Hub() {
   }, [awake, s, moon, stage, pct]);
 
   // ── Random scares while the house is quiet ──
-  const quiet = awake && s?.phase === "playing" && !moon;
+  const quiet = awake && s?.phase === "playing" && !moon && s.settings.scares;
   useEffect(() => {
     if (!quiet) return;
     let t: ReturnType<typeof setTimeout>;
@@ -74,7 +74,7 @@ function Hub() {
   if (!awake) {
     return (
       <>
-        <Atmos />
+        <Atmos rich />
         <button
           className="screen"
           onClick={() => {
@@ -91,7 +91,7 @@ function Hub() {
           }}
         >
           <h1 className="creep blood flicker" style={{ fontSize: "8vw" }}>POSSESSED</h1>
-          <p className="creep" style={{ fontSize: "2.5vw", color: "var(--dim)" }}>Click to awaken the house</p>
+          <p className="creep" style={{ fontSize: "2.5vw", color: "var(--dim)" }}>Click anywhere to awaken the house</p>
         </button>
       </>
     );
@@ -101,7 +101,7 @@ function Hub() {
 
   return (
     <>
-      <Atmos red={red} />
+      <Atmos red={red} rich />
       <main
         className="screen"
         style={{
@@ -170,7 +170,7 @@ function Hub() {
 
 function Lobby({ s }: { s: View }) {
   const [qr, setQr] = useState<string | null>(null);
-  const url = typeof window !== "undefined" ? `${window.location.origin}/play` : "";
+  const url = typeof window !== "undefined" ? window.location.origin : "";
   useEffect(() => {
     QRCode.toDataURL(url, { margin: 1, width: 600, color: { dark: "#120306", light: "#e9e3d0" } }).then(setQr);
   }, [url]);
@@ -180,7 +180,7 @@ function Lobby({ s }: { s: View }) {
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1.2fr", gap: "5vw", alignItems: "center", width: "100%" }}>
       <div style={{ display: "grid", justifyItems: "center", gap: "2vh" }}>
         <h1 className="creep blood flicker" style={{ fontSize: "7vw", lineHeight: 1 }}>POSSESSED</h1>
-        <p style={{ fontSize: "2vw", fontStyle: "italic", color: "var(--dim)" }}>Enter, if you dare.</p>
+        <p className="flavor" style={{ fontSize: "2.2vw", color: "var(--dim)" }}>Enter, if you dare…</p>
         {qr && (
           // eslint-disable-next-line @next/next/no-img-element -- data: URL QR code
           <img
@@ -190,20 +190,20 @@ function Lobby({ s }: { s: View }) {
           />
         )}
         <p style={{ fontSize: "1.6vw" }}>
-          Scan, or visit <strong style={{ color: "var(--candle)" }}>{url.replace(/^https?:\/\//, "")}</strong>
+          📱 Scan to join, or go to <strong style={{ color: "var(--candle)" }}>{url.replace(/^https?:\/\//, "")}</strong>
         </p>
       </div>
       <div style={{ display: "grid", gap: "3vh" }}>
-        <h2 className="creep glow" style={{ fontSize: "3.5vw" }}>Souls Gathered: {s.players.length}</h2>
+        <h2 className="creep glow" style={{ fontSize: "3.5vw" }}>Players: {s.players.length}</h2>
         <div className="panel" style={{ padding: "3vh 2vw", minHeight: "30vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
           {s.players.length ? (
             <SoulList players={s.players} big />
           ) : (
-            <p className="flicker" style={{ fontSize: "1.8vw", color: "var(--dim)" }}>The house is empty… for now.</p>
+            <p className="flicker" style={{ fontSize: "1.8vw", color: "var(--dim)" }}>Nobody here yet… scan the code!</p>
           )}
         </div>
         <p style={{ fontSize: "1.8vw", color: need ? "var(--dim)" : "var(--candle)" }}>
-          {need ? `${need} more soul${need === 1 ? "" : "s"} needed` : `${s.traitorCount} Possessed will walk among you`}
+          {need ? `Need ${need} more player${need === 1 ? "" : "s"} to start` : `Ready! ${s.traitorCount} of you will be Possessed…`}
         </p>
       </div>
     </div>
@@ -221,10 +221,10 @@ function Reveal({ s, now }: { s: View; now: number }) {
         <span className="glitch" style={{ display: "inline-block" }}>themselves</span>
       </h1>
       <p className="fade-in" style={{ fontSize: "2.4vw", animationDelay: "1.5s" }}>
-        Look at your phone. Press and hold to learn your fate. Tell no one.
+        📱 Look at your phone! Press and hold to see your role. Keep it secret!
       </p>
       <p className="fade-in" style={{ fontSize: "2vw", color: "var(--dim)", animationDelay: "2.5s" }}>
-        {s.traitorCount} Possessed walk among you · The haunting begins in {secondsLeft(s.phaseEndsAt, now)}
+        {s.traitorCount} Possessed among you · Starting in {secondsLeft(s.phaseEndsAt, now)}
       </p>
     </div>
   );
@@ -269,12 +269,13 @@ function Haunting({ s }: { s: View }) {
         })}
         <div style={{ position: "absolute", inset: 0, display: "grid", placeContent: "center", gap: "1vh" }}>
           <p className="creep glow" style={{ fontSize: "4vw", color: "var(--candle)" }}>{Math.round(pct * 100)}%</p>
-          <p style={{ fontSize: "1.6vw", color: "var(--dim)" }}>The Seal</p>
+          <p style={{ fontSize: "1.6vw", color: "var(--dim)" }}>Tasks done</p>
         </div>
       </div>
-      <h2 className="creep" style={{ fontSize: "3vw" }}>Complete the rituals. Break the curse.</h2>
+      <h2 className="creep" style={{ fontSize: "3.4vw" }}>Do your tasks. Find the Possessed.</h2>
+      <p className="flavor" style={{ fontSize: "1.8vw", color: "var(--dim)" }}>Light every candle to break the curse…</p>
       <p style={{ fontSize: "1.8vw", color: "var(--dim)" }}>
-        {souls} soul{souls === 1 ? "" : "s"} remain · Found a corpse? Report it on your phone.
+        👥 {souls} player{souls === 1 ? "" : "s"} left · 💀 Found a body? Tap it on your phone.
       </p>
     </div>
   );
@@ -316,11 +317,12 @@ function BloodMoon({ s, now, onState }: { s: View; now: number; onState: (v: Vie
   return (
     <div style={{ display: "grid", justifyItems: "center", gap: "2.5vh" }}>
       <div className="moon" style={{ width: "22vh", height: "22vh" }} />
-      <h1 className="creep blood shake" style={{ fontSize: "6vw", lineHeight: 1 }}>The Blood Moon Rises</h1>
+      <h1 className="creep blood shake" style={{ fontSize: "6vw", lineHeight: 1 }}>Blood Moon!</h1>
       <p className="creep blood" style={{ fontSize: "9vw", lineHeight: 1 }}>{left}</p>
       <p style={{ fontSize: "2.4vw" }}>
-        Find the cards at{" "}
-        <strong style={{ color: "var(--candle)" }}>{s.bloodMoon.locations.join("  &  ")}</strong>
+        Find the 2 cards at{" "}
+        <strong style={{ color: "var(--candle)" }}>📍 {s.bloodMoon.locations.join("  +  📍 ")}</strong>
+        <br />then type both cards here
       </p>
       <form
         onSubmit={(e) => {
@@ -335,13 +337,13 @@ function BloodMoon({ s, now, onState }: { s: View; now: number; onState: (v: Vie
           className={`input ${wrong ? "shake" : ""}`}
           value={code}
           onChange={(e) => setCode(e.target.value)}
-          placeholder="Speak the code…"
+          placeholder="Type the 2 cards, like A10"
           autoComplete="off"
           style={{ fontSize: "2.4vw", textAlign: "center", textTransform: "uppercase" }}
         />
-        <button className="btn primary" style={{ fontSize: "2vw", padding: "0 2vw" }}>Seal</button>
+        <button className="btn primary" style={{ fontSize: "2vw", padding: "0 2vw" }}>Enter</button>
       </form>
-      {wrong > 0 && <p className="blood" style={{ fontSize: "2vw" }}>The spirits reject you.</p>}
+      {wrong > 0 && <p className="blood" style={{ fontSize: "2vw" }}>❌ Wrong! Try again — hurry!</p>}
     </div>
   );
 }
@@ -358,7 +360,7 @@ function Seance({ s, now }: { s: View; now: number }) {
       <div style={{ display: "grid", gap: "3vh" }}>
         <h1 className="creep blood shake" style={{ fontSize: "8vw", lineHeight: 1 }}>{t.title}</h1>
         <p style={{ fontSize: "3vw" }}>{t.sub}</p>
-        <p className="creep flicker" style={{ fontSize: "3.5vw", color: "var(--candle)" }}>All souls, gather here</p>
+        <p className="creep flicker" style={{ fontSize: "3.5vw", color: "var(--candle)" }}>Everyone, come to the TV!</p>
       </div>
     );
   }
@@ -370,11 +372,12 @@ function Seance({ s, now }: { s: View; now: number }) {
       <div style={{ display: "grid", gap: "4vh", justifyItems: "center" }}>
         {ejected && (
           <div style={{ animation: "fade-in 1s reverse both 2s" }}>
-            <Soul color={ejected.color} size={90} />
+            <Soul color={ejected.color} size={130} />
           </div>
         )}
         <h1 className="creep blood fade-in" style={{ fontSize: "5.5vw", lineHeight: 1.1 }}>{v.title}</h1>
-        <p className="fade-in" style={{ fontSize: "2.6vw", fontStyle: "italic", animationDelay: "2s" }}>{v.sub}</p>
+        <p className="flavor fade-in" style={{ fontSize: "2.4vw", animationDelay: "1s" }}>{v.flavor}</p>
+        <p className="fade-in" style={{ fontSize: "2.8vw", fontWeight: 800, animationDelay: "2s" }}>{v.sub}</p>
       </div>
     );
   }
@@ -383,9 +386,9 @@ function Seance({ s, now }: { s: View; now: number }) {
   const living = s.players.filter((p) => p.alive);
   return (
     <div style={{ display: "grid", gap: "3vh", width: "100%" }}>
-      <h1 className="creep glow" style={{ fontSize: "5vw" }}>{voting ? "Cast Your Votes" : "The Séance"}</h1>
+      <h1 className="creep glow" style={{ fontSize: "5vw" }}>{voting ? "🗳️ Vote now!" : "🗣️ Talk time"}</h1>
       <p style={{ fontSize: "2.2vw", fontStyle: "italic" }}>
-        {voting ? "Vote on your phones. Who is Possessed?" : deadText(s)}
+        {voting ? "Vote on your phones. Who is Possessed?" : `Who is Possessed? Talk it out! · ${deadText(s)}`}
       </p>
       <p className="creep" style={{ fontSize: "8vw", lineHeight: 1, color: left <= 10 ? "var(--blood-bright)" : "var(--candle)" }}>
         {fmt(left)}
@@ -433,7 +436,8 @@ function Over({ s }: { s: View }) {
       <h1 className={`creep ${traitorWin ? "blood" : "glow"} fade-in`} style={{ fontSize: "6.5vw", lineHeight: 1, color: traitorWin ? undefined : "var(--candle)" }}>
         {w.title}
       </h1>
-      <p className="fade-in" style={{ fontSize: "2.6vw", fontStyle: "italic", animationDelay: "1s" }}>{w.sub}</p>
+      <p className="flavor fade-in" style={{ fontSize: "2.4vw", animationDelay: "0.6s" }}>{w.flavor}</p>
+      <p className="fade-in" style={{ fontSize: "2.6vw", fontWeight: 800, animationDelay: "1.2s" }}>{w.sub}</p>
       <div style={{ display: "flex", flexWrap: "wrap", gap: "2vw", justifyContent: "center" }}>
         {s.players.map((p, i) => (
           <div
@@ -451,7 +455,7 @@ function Over({ s }: { s: View }) {
             <Soul color={p.color} size={32} dead={!p.alive} />
             <strong style={{ fontSize: "2vw" }}>{p.name}</strong>
             <span className={p.role === "traitor" ? "creep blood" : "creep"} style={{ fontSize: "1.8vw" }}>
-              {p.role === "traitor" ? "Possessed" : "Mortal"}
+              {p.role === "traitor" ? "😈 Possessed" : "🕯️ Mortal"}
             </span>
           </div>
         ))}
