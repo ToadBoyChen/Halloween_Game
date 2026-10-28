@@ -108,6 +108,14 @@ export function BodiesFound({ s, big = false }: { s: View; big?: boolean }) {
   );
 }
 
+// "…ONE is Possessed" for the Lantern Bearer's reveal.
+export function lanternVerdict(count: number) {
+  return ["NONE of them are Possessed", "ONE is Possessed", "TWO are Possessed", "ALL THREE are Possessed"][count] ?? `${count} are Possessed`;
+}
+
+// "Ann, Ben and Sam"
+export const listNames = (names: string[]) => (names.length < 2 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`);
+
 export function verdictText(s: View) {
   const r = s.meeting?.result;
   if (!r) return { title: "", sub: "", flavor: "" };

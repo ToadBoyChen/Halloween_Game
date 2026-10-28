@@ -10,7 +10,8 @@ export type AdminAction = {
   do: string;
   n?: number; // how many bots
   name?: string; // which player (defaults to the only human)
-  role?: string; // "traitor" | "member"
+  role?: string; // "traitor" | "member" | "lantern" (a Mortal who is the Lantern Bearer)
+  names?: string; // comma-separated player names (who the Lantern lights on)
   target?: string; // vote target: a name, "skip", or "random"
   pct?: number; // percent of the remaining ritual pool for bots to finish
 };
@@ -42,6 +43,13 @@ function forceRole(g: Game, p: Player, role: Role) {
   if (!swap) fail(`No one has the ${role} role to swap with.`);
   swap!.role = p.role;
   p.role = role;
+  // The Lantern Bearer must stay a Mortal.
+  const bearer = g.players.find((q) => q.special === "lantern");
+  if (bearer && bearer.role === "traitor") {
+    bearer.special = null;
+    const mortal = g.players.find((q) => q.role === "member");
+    if (mortal) mortal.special = "lantern";
+  }
 }
 
 // Let meetings be called and the Blood Moon or the Hush be used right now.
@@ -79,6 +87,13 @@ export function runAdmin(g: Game, a: AdminAction, now: number): unknown {
     case "start": {
       host(g, { type: "start" }, now);
       if (a.role === "traitor" || a.role === "member") forceRole(g, findPlayer(g, a.name), a.role);
+      if (a.role === "lantern") {
+        // Works with any number of players, so the Lantern can be tested alone with bots.
+        const p = findPlayer(g, a.name);
+        forceRole(g, p, "member");
+        g.players.forEach((q) => (q.special = null));
+        p.special = "lantern";
+      }
       return { ok: true };
     }
 
@@ -187,6 +202,25 @@ export function runAdmin(g: Game, a: AdminAction, now: number): unknown {
     case "code":
       return { code: currentCode(g) };
 
+    // The Lantern Bearer lights the lantern: on the players named (names=Ann,Ben,Sam), or on
+    // three at random if none are given. Testing the TV reveal.
+    case "lantern": {
+      const bearer = g.players.find((p) => p.special === "lantern") ?? fail("No Lantern Bearer this game (needs 5+ players).");
+      const named = (a.names ?? "").split(",").map((n) => n.trim()).filter(Boolean);
+      let targets: string[];
+      if (named.length) {
+        const chosen = named.map((n) => findPlayer(g, n));
+        if (chosen.some((p) => p.id === bearer.id)) fail("The Lantern Bearer can't light the lantern on themselves.");
+        targets = chosen.map((p) => p.id);
+      } else {
+        const others = g.players.filter((p) => p.alive && p.id !== bearer.id);
+        if (others.length < 3) fail("There aren't three other living players to light it on.");
+        targets = [...others].sort(() => Math.random() - 0.5).slice(0, 3).map((p) => p.id);
+      }
+      act(g, bearer, { type: "lantern", targets }, now);
+      return { by: bearer.name, count: g.meeting?.lantern?.count };
+    }
+
     // A living bot finds and picks both Blood Moon cards.
     case "botseal": {
       if (!g.bloodMoon.active) fail("There is no Blood Moon right now.");
@@ -251,6 +285,7 @@ export function debugView(g: Game) {
         color: p.color,
         bot: !!p.bot,
         role: p.role,
+        special: p.special ?? null,
         alive: p.alive,
         ejected: p.ejected,
         foundBy: p.foundBy ? nameOf(p.foundBy) : null,

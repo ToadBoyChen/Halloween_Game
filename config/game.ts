@@ -10,6 +10,7 @@ export const DEFAULT_SETTINGS = {
   meetingsPerPlayer: 1, // emergency meetings each player can call from the TV keyboard (reporting a body is free)
   meetingCooldown: 90, // seconds after play starts or resumes before anyone can call one
   revealOnEject: false,
+  lantern: true, // one Mortal is the Lantern Bearer (needs 5+ players)
   revive: true, // someone reported while still alive can tap "I'm not dead!" until the next meeting ends
   hush: true, // the Possessed can call the Hush: no meetings for a while
   hushDuration: 60, // seconds

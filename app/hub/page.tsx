@@ -5,7 +5,7 @@ import QRCode from "qrcode";
 import { haunt } from "@/lib/audio";
 import { useEventSounds } from "@/lib/sounds";
 import { post, secondsLeft, useGame, useMounted, useOnChange, useTicker, type View } from "@/lib/client";
-import { Atmos, BodiesFound, CountdownRing, Soul, SoulList, summonsText, verdictText, winText } from "@/components/shared";
+import { Atmos, BodiesFound, CountdownRing, lanternVerdict, listNames, Soul, SoulList, summonsText, verdictText, winText } from "@/components/shared";
 import { HostPanel } from "./HostPanel";
 import { EmergencyPicker, MeetingStatus, emergencyBlock, meetingRing } from "./Emergency";
 
@@ -82,6 +82,10 @@ function Hub() {
 
   // ── Sound cues ──
   useEventSounds(s, awake);
+  useOnChange(awake && s?.meeting?.lantern ? `l${s.meeting.lantern.at}` : null, () => {
+    haunt.whoosh();
+    setTimeout(() => haunt.toll(), LANTERN_ANSWER_MS);
+  });
   useOnChange(s && s.phase !== "lobby" ? `p${s.round}:${s.progress.done}` : null, (k) => {
     if (!k.endsWith(":0")) haunt.chime();
   });
@@ -537,6 +541,7 @@ function Seance({ s, now }: { s: View; now: number }) {
   const voting = m.stage === "voting";
   const living = s.players.filter((p) => p.alive);
   const marked = voting ? m.voted : m.readyToVote;
+  const lantern = m.lantern;
   return (
     <div className="seance">
       <header>
@@ -546,7 +551,13 @@ function Seance({ s, now }: { s: View; now: number }) {
             ? `${m.voted.length} of ${living.length} votes are in`
             : `${m.readyToVote.length} of ${living.length} ready to vote`}
         </p>
+        {lantern && now - lantern.at > LANTERN_MS && (
+          <p className={`lantern-line ${lantern.count ? "evil" : ""}`}>
+            🏮 Among {listNames(lantern.names)}: {lanternVerdict(lantern.count).toLowerCase()}
+          </p>
+        )}
       </header>
+      {lantern && now - lantern.at <= LANTERN_MS && <LanternReveal names={lantern.names} count={lantern.count} since={now - lantern.at} />}
       <CountdownRing left={left} total={voting ? s.settings.voting : s.settings.discussion} tone={voting ? "vote" : "talk"} size="42vh" />
       <div className="seance-bodies">{!voting && <BodiesFound s={s} big />}</div>
       <div className="seance-souls">
@@ -563,6 +574,20 @@ function Seance({ s, now }: { s: View; now: number }) {
 }
 
 // ─── Game over ───────────────────────────────────────────────
+
+// The Lantern Bearer's reveal: the lantern swings in, the names, then the answer.
+const LANTERN_MS = 9000;
+const LANTERN_ANSWER_MS = 2800;
+
+function LanternReveal({ names, count, since }: { names: string[]; count: number; since: number }) {
+  return (
+    <div className="overlay lantern-reveal" style={{ zIndex: 25 }}>
+      <div className="lantern-swing">🏮</div>
+      <p className="flavor lantern-names">The Lantern Bearer shines a light… Among {listNames(names)}…</p>
+      <p className={`creep lantern-answer ${since >= LANTERN_ANSWER_MS ? "on" : ""} ${count ? "evil" : ""}`}>…{lanternVerdict(count)}</p>
+    </div>
+  );
+}
 
 function Over({ s }: { s: View }) {
   const w = winText(s);
@@ -591,7 +616,7 @@ function Over({ s }: { s: View }) {
             <Soul color={p.color} size={32} dead={!p.alive} />
             <strong style={{ fontSize: "2vw" }}>{p.name}</strong>
             <span className={p.role === "traitor" ? "creep blood" : "creep"} style={{ fontSize: "1.8vw" }}>
-              {p.role === "traitor" ? "😈 Possessed" : "🕯️ Mortal"}
+              {p.role === "traitor" ? "😈 Possessed" : p.special === "lantern" ? "🏮 Lantern Bearer" : "🕯️ Mortal"}
             </span>
           </div>
         ))}

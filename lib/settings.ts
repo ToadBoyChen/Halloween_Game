@@ -14,6 +14,7 @@ export const SETTING_GROUPS: SettingGroup[] = [
     fields: [
       { kind: "number", key: "traitors", label: "Possessed", min: 0, max: 3, step: 1, zero: "Auto", hint: "Auto: 1 for 3–7 players, 2 for 8+" },
       { kind: "toggle", key: "revealOnEject", label: "Show the role of whoever is voted out" },
+      { kind: "toggle", key: "lantern", label: "🏮 One Mortal is the Lantern Bearer (5+ players)" },
     ],
   },
   {

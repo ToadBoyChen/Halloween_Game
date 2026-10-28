@@ -33,6 +33,7 @@ type Admin = {
     color: string;
     bot: boolean;
     role: string | null;
+    special: string | null;
     alive: boolean;
     ejected: boolean;
     foundBy: string | null;
@@ -140,6 +141,7 @@ function Controls() {
           {btn("⏭ Skip timer", { do: "skip" }, true, !timed)}
           {btn("Start: I'm Possessed", { do: "start", role: "traitor" }, false, phase !== "lobby")}
           {btn("Start: I'm Mortal", { do: "start", role: "member" }, false, phase !== "lobby")}
+          {btn("Start: I'm the 🏮 Lantern Bearer", { do: "start", role: "lantern" }, false, phase !== "lobby")}
           {btn("Everyone ready", { do: "ready" }, false, phase !== "reveal")}
           {btn("🔔 Force meeting", { do: "meeting" }, false, phase !== "playing")}
           {btn("🔁 Back to lobby", { do: "lobby" }, false, phase === "lobby")}
@@ -164,6 +166,8 @@ function Controls() {
           {btn("🔊 End the Hush", { do: "unhush" }, false, !s?.hushIn)}
           {btn("⏩ Fill meeting ring + ready powers", { do: "cooldowns" }, false, phase !== "playing")}
         </Group>
+
+        {s && <LanternControls s={s} call={call} />}
 
         <Group title="☠ Kill & revive">
           {s?.players.map((p) =>
@@ -257,7 +261,7 @@ function Status({ s, showRoles, onToggleRoles }: { s: Admin; showRoles: boolean;
             <span style={{ minWidth: 0 }}>
               <strong>
                 {p.name}
-                {showRoles && p.role ? (p.role === "traitor" ? " 😈" : " 🕯️") : ""}
+                {showRoles && p.role ? (p.role === "traitor" ? " 😈" : p.special === "lantern" ? " 🏮" : " 🕯️") : ""}
               </strong>
               <small>
                 {!p.alive
@@ -279,6 +283,53 @@ function Status({ s, showRoles, onToggleRoles }: { s: Admin; showRoles: boolean;
         ))}
       </div>
     </section>
+  );
+}
+
+// Light the Lantern for the Lantern Bearer: on three chosen players, or three at random.
+// It only works during talk time, once per game.
+function LanternControls({ s, call }: { s: Admin; call: (params: Record<string, string | number>) => void }) {
+  const [picks, setPicks] = useState<string[]>([]);
+  const talk = s.stage === "discussion";
+  const living = s.players.filter((p) => p.alive);
+  const toggle = (name: string) => setPicks((ps) => (ps.includes(name) ? ps.filter((x) => x !== name) : ps.length < 3 ? [...ps, name] : ps));
+  const light = (params: Record<string, string>) => {
+    call({ do: "lantern", ...params });
+    setPicks([]);
+  };
+  return (
+    <Group title="🏮 Lantern">
+      {talk ? (
+        <div style={{ gridColumn: "1 / -1", display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {living.map((p) => (
+            <button
+              key={p.name}
+              className="btn ghost"
+              onClick={() => toggle(p.name)}
+              style={{
+                minHeight: 40,
+                padding: "6px 12px",
+                fontSize: ".95rem",
+                borderWidth: picks.includes(p.name) ? 2 : 1,
+                borderColor: picks.includes(p.name) ? "var(--candle)" : undefined,
+                color: picks.includes(p.name) ? "var(--candle)" : undefined,
+              }}
+            >
+              {picks.includes(p.name) ? "✓ " : ""}
+              {p.name}
+            </button>
+          ))}
+        </div>
+      ) : (
+        <Note>Light it during talk time. The Lantern Bearer can only light it once per game.</Note>
+      )}
+      <button className="btn primary" style={{ fontSize: "1rem", minHeight: 52 }} disabled={!talk || picks.length !== 3} onClick={() => light({ names: picks.join(",") })}>
+        🏮 Light with these {talk ? `(${picks.length}/3)` : ""}
+      </button>
+      <button className="btn" style={{ fontSize: "1rem", minHeight: 52 }} disabled={!talk} onClick={() => light({})}>
+        🎲 Light at random
+      </button>
+    </Group>
   );
 }
 

@@ -20,6 +20,7 @@ A physical, phone-driven social deduction game for a Halloween party. The hub (`
 - **Ghosts** stay silent, can't vote or report, and finish leftover rituals.
 - **Séance:** reporting a body can always call one. Without a body, every player has 1 emergency meeting (changeable in the host panel), called at the TV: press any key on the TV keyboard (except Space, S and H), type your player number and press Enter. Every player's number is shown on their phone and in the TV lobby. After the game starts and after each meeting, a blue ring fills around the pentagram on the TV (90 seconds, changeable in the host panel). Emergency meetings can only be called once it's full, and every finished ritual takes 2–5 seconds off the wait. The TV lists every body found since the last meeting and who found it. During talk time each phone shows one big *Ready to vote* button. When every living player has tapped it, voting starts early. Talk → voting on phones → verdict.
 - **Role reveal:** no timer. Everyone holds to see their role and taps *I'm ready*; the game starts when all players are ready (the host can skip).
+- **🏮 The Lantern Bearer:** with 5+ players, one Mortal secretly gets a lantern (switch it off in settings). Once per game, during talk time, they tap *Light the Lantern* and pick three players. The TV shows a swinging lantern and reveals how many of the three are Possessed (none, one, two or all three), but never who the Lantern Bearer is. The Possessed may well claim to be the Lantern Bearer.
 - **The Hush:** the Possessed call it from *⚡ Actions*. For 60 seconds nobody can call a meeting (bodies can still be reported without one). Screens go cold and grey, and a 🔒 covers the meeting buttons. It shares the Blood Moon's cooldown.
 - **Blood Moon:** the Possessed summon it from *⚡ Actions* (alive or dead). Each Blood Moon uses two locations with a playing card at each. Anyone alive, even the Possessed, finds a card and taps it on their phone from 6 choices. One player can do both, or two can split up. A wrong pick locks that player out for 10s. When both are sealed the TV shows who saved everyone. Timings are in the host panel under **🌕 Blood Moon**.
 
@@ -49,13 +50,14 @@ Open `/spirits` on a computer somewhere in the house and click to awaken it. Lik
 Open `/admin` on your phone to run the game without touching the laptop:
 
 - **Status:** the phase and meeting stage, ritual progress, the meeting ring, the Hush, when the Possessed's powers are ready, and ready-to-vote / vote counts. Every player is listed with their number, what they're working on, rituals done, emergency meetings left, and who found them if they're a ghost. Roles stay hidden until you tap **Show roles**, so you can play too.
-- **▶ Game:** start (or start as Possessed / Mortal), ⏭ skip timer, everyone ready, force a meeting, back to lobby, reset.
+- **▶ Game:** start (or start as Possessed / Mortal / the Lantern Bearer), ⏭ skip timer, everyone ready, force a meeting, back to lobby, reset.
 - **😈 Possessed powers:** Blood Moon now / cancel it (with the card answers), Hush now / end it, and fill the meeting ring + ready the powers.
+- **🏮 Lantern:** during talk time, light the Lantern Bearer's lantern on three players you tick, or on three at random.
 - **☠ Kill & revive:** fix mistakes mid-game.
 - **🤖 Bots (testing alone):** add bots, make them do rituals, find bodies (with or without a meeting), vote and stop the Blood Moon.
 - **⚙️ Settings:** every lobby setting, the same as the TV's host panel (H).
 
-Every button is also a URL, e.g. `/api/admin?do=skip`. Actions: `start` (role, name), `skip`, `meeting`, `lobby`, `reset`, `ready`, `moon`, `cancelMoon`, `hush`, `unhush`, `code`, `bots` (n), `clearbots`, `fast`, `role`, `cooldowns`, `bottasks` (pct), `kill` (name), `revive` (name), `botkill` (name: a bot finds their body), `botreport` (a bot finds a body and calls a meeting), `botvote` (target = name | skip | random), `botseal`, `state`.
+Every button is also a URL, e.g. `/api/admin?do=skip`. Actions: `start` (role = traitor | member | lantern, name), `skip`, `meeting`, `lobby`, `reset`, `ready`, `moon`, `cancelMoon`, `hush`, `unhush`, `code`, `bots` (n), `clearbots`, `fast`, `role`, `cooldowns`, `bottasks` (pct), `kill` (name), `revive` (name), `botkill` (name: a bot finds their body), `botreport` (a bot finds a body and calls a meeting), `botvote` (target = name | skip | random), `botseal`, `lantern` (names = Ann,Ben,Sam, or three at random), `state`.
 
 There is no PIN, so don't share `/admin`, `/hub` or `/setup` with guests (they only need the QR code). Set `ADMIN_TOOLS=off` in Vercel to switch `/admin` off entirely.
 

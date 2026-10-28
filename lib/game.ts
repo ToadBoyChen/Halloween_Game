@@ -23,6 +23,8 @@ export type Player = {
   name: string;
   color: string;
   role: Role | null;
+  special?: "lantern" | null; // the Lantern Bearer is a Mortal with one big reveal per game
+  lanternUsed?: boolean;
   alive: boolean; // false once someone reports their body, or they're voted out
   diedAt?: number;
   foundBy?: string | null; // who reported their body
@@ -50,6 +52,7 @@ export type Meeting = {
   newlyDead: string[];
   votes: Record<string, string>; // voterId -> targetId | "skip"
   readyToVote?: string[]; // living players who tapped "Ready to vote" during talk time
+  lantern?: { picks: string[]; count: number; at: number } | null; // the Lantern Bearer's reveal this meeting
   result: { ejectedId: string | null; tie: boolean; counts: Record<string, number> } | null;
 };
 
@@ -297,6 +300,7 @@ export type Action =
   | { type: "alive" }
   | { type: "hush" }
   | { type: "readyVote" }
+  | { type: "lantern"; targets: string[] }
   | { type: "vote"; target: string }
   | { type: "summon" }
   | { type: "ready" }
@@ -380,6 +384,24 @@ export function act(g: Game, p: Player, a: Action, now: number) {
       p.foundBy = null;
       if (g.meeting) g.meeting.newlyDead = g.meeting.newlyDead.filter((id) => id !== p.id);
       return;
+
+    // The Lantern Bearer, once per game during talk time: how many of three players are Possessed.
+    // The TV reveals the count to everyone, but never who lit the lantern.
+    case "lantern": {
+      const m = g.meeting;
+      if (p.special !== "lantern") fail("Only the Lantern Bearer can do that.");
+      if (p.lanternUsed) fail("Your lantern has already burned out.");
+      if (!p.alive) fail("Ghosts can't light the lantern.");
+      if (g.phase !== "meeting" || m?.stage !== "discussion") fail("Light it during talk time.");
+      if (m!.lantern) fail("The lantern has already been lit this meeting.");
+      if (g.players.filter((x) => x.alive && x.id !== p.id).length < 3) fail("There aren't three other living players to light it on.");
+      const picks = [...new Set(a.targets)];
+      if (picks.length !== 3) fail("Pick three players.");
+      const chosen = picks.map((id) => g.players.find((x) => x.id === id && x.alive && x.id !== p.id) ?? fail("Pick three other living players."));
+      p.lanternUsed = true;
+      m!.lantern = { picks, count: chosen.filter((x) => x.role === "traitor").length, at: now };
+      return;
+    }
 
     // Talk time ends early once every living player is ready to vote.
     case "readyVote": {
@@ -544,7 +566,11 @@ export function host(g: Game, a: HostAction, now: number) {
       const k = traitorCount(g);
       const traitors = new Set(shuffle(g.players).slice(0, k).map((p) => p.id));
       g.players.forEach((p, i) => (p.num = i + 1));
+      const mortals = shuffle(g.players.filter((p) => !traitors.has(p.id)));
+      const lanternId = g.settings.lantern && g.players.length >= 5 ? mortals[0]?.id : undefined;
       for (const p of g.players) {
+        p.special = p.id === lanternId ? "lantern" : null;
+        p.lanternUsed = false;
         p.role = traitors.has(p.id) ? "traitor" : "member";
         p.alive = true;
         p.diedAt = 0;
@@ -668,6 +694,7 @@ export function publicView(g: Game, now: number) {
       alive: p.alive,
       ejected: p.ejected,
       role: over ? p.role : null,
+      special: over ? (p.special ?? null) : null,
       foundBy: !p.alive && p.foundBy ? nameOf(p.foundBy) : null,
       meetingsLeft: Math.max(0, g.settings.meetingsPerPlayer - (p.meetingsCalled ?? 0)),
     })),
@@ -699,6 +726,7 @@ export function publicView(g: Game, now: number) {
       newlyDead: m.newlyDead,
       voted: Object.keys(m.votes),
       readyToVote: m.readyToVote ?? [],
+      lantern: m.lantern ? { names: m.lantern.picks.map(nameOf), count: m.lantern.count, at: m.lantern.at } : null,
       result: verdict
         ? {
             ...m.result!,
@@ -745,6 +773,8 @@ export function playerView(g: Game, p: Player, now: number) {
       summonReadyAt: traitor && (g.settings.bloodMoon || g.settings.hush) ? summonReadyAt(g) : 0,
       ready: !!p.ready,
       canRevive: canRevive(g, p),
+      special: p.special ?? null,
+      lanternUsed: !!p.lanternUsed,
       sealLockedUntil: g.bloodMoon.lockouts?.[p.id] ?? 0,
     },
   };

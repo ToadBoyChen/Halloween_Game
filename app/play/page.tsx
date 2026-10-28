@@ -366,6 +366,7 @@ function Lobby({ s, me, send, sound }: { s: View; me: Me; send: Send; sound: Sou
 
 function RoleCard({ me, compact = false }: { me: Me; compact?: boolean }) {
   const traitor = me.role === "traitor";
+  const lantern = !traitor && me.special === "lantern";
   const rules = traitor
     ? [
         "Tap a Mortal’s shoulder and whisper “you’re mine” to kill them.",
@@ -375,21 +376,22 @@ function RoleCard({ me, compact = false }: { me: Me; compact?: boolean }) {
       ]
     : [
         "Claim rituals and do them around the house.",
-        "If someone whispers “you’re mine”, you’re dead. Lie still until someone finds you.",
-        "Once you’re found, you’re a ghost: finish leftover rituals, silently.",
-        "Found a body? Report it in ⚡ Actions. No body? Type your number on the TV keyboard.",
+        "Someone whispers “you’re mine”? You’re dead. Lie still until you’re found.",
+        "Once found, you’re a ghost: finish rituals, silently.",
+        "Found a body? Report it in ⚡ Actions.",
       ];
+  if (lantern) rules.splice(1, 0, "🏮 Once per game, in talk time: pick three players. The TV shows how many are Possessed.");
   return (
     <div style={{ textAlign: "center", display: "grid", gap: compact ? 8 : 12 }}>
-      <div style={{ fontSize: compact ? "3.2rem" : "4.2rem", lineHeight: 1 }}>{traitor ? "😈" : "🕯️"}</div>
+      <div style={{ fontSize: compact ? "3.2rem" : "4.2rem", lineHeight: 1 }}>{traitor ? "😈" : lantern ? "🏮" : "🕯️"}</div>
       <h2
         className={`creep ${traitor ? "blood glitch" : "glow"}`}
         style={{ fontSize: compact ? "2.6rem" : "3.1rem", lineHeight: 1, color: traitor ? undefined : "var(--candle)" }}
       >
-        {traitor ? "POSSESSED" : "MORTAL"}
+        {traitor ? "POSSESSED" : lantern ? "LANTERN BEARER" : "MORTAL"}
       </h2>
       <p style={{ fontWeight: 800, fontSize: "1.1rem" }}>
-        {traitor ? "You’re the secret bad guy. Tell no one!" : "You’re one of the good ones."}
+        {traitor ? "You’re the secret bad guy. Tell no one!" : lantern ? "A Mortal with a gift. Keep it secret!" : "You’re one of the good ones."}
       </p>
       <ul style={{ textAlign: "left", display: "grid", gap: 5, fontSize: "1rem" }}>
         {rules.map((r) => (
@@ -975,6 +977,70 @@ function PossessedEvent({
   );
 }
 
+// The Lantern Bearer's one reveal: pick three players, and the TV says how many are Possessed.
+function LanternButton({ s, me, send }: { s: View; me: Me; send: Send }) {
+  const [open, setOpen] = useState(false);
+  const [picks, setPicks] = useState<string[]>([]);
+  const others = s.players.filter((p) => p.alive && p.id !== me.id);
+  const toggle = (id: string) => setPicks((ps) => (ps.includes(id) ? ps.filter((x) => x !== id) : ps.length < 3 ? [...ps, id] : ps));
+  const close = () => {
+    setOpen(false);
+    setPicks([]);
+  };
+  return (
+    <>
+      <button className="btn lantern-btn" onClick={() => setOpen(true)}>
+        🏮 Light the Lantern
+        <small>Once per game. Pick three players.</small>
+      </button>
+      {open && (
+        <div className="overlay fade-in" style={{ justifyContent: "flex-start", overflowY: "auto" }}>
+          <div style={{ fontSize: "3.4rem", lineHeight: 1, marginTop: 8 }}>🏮</div>
+          <h2 className="creep" style={{ fontSize: "2.2rem", lineHeight: 1.1, color: "var(--candle)" }}>Pick three players</h2>
+          <p style={{ margin: "6px 0 16px", color: "var(--dim)" }}>The TV will show how many of them are Possessed. You can only do this once.</p>
+          <div className="vote-grid" style={{ width: "100%", maxWidth: 360 }}>
+            {others.map((p) => (
+              <button
+                key={p.id}
+                className="btn"
+                onClick={() => toggle(p.id)}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  fontSize: "1.1rem",
+                  borderWidth: picks.includes(p.id) ? 3 : 1,
+                  borderColor: picks.includes(p.id) ? "var(--candle)" : undefined,
+                  overflow: "hidden",
+                }}
+              >
+                <Soul color={p.color} size={20} />
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</span>
+              </button>
+            ))}
+          </div>
+          <div style={{ display: "grid", gap: 10, width: "100%", maxWidth: 360, marginTop: 16 }}>
+            <button
+              className="btn primary"
+              disabled={picks.length !== 3}
+              style={{ fontSize: "1.3rem", minHeight: 64, opacity: picks.length === 3 ? 1 : 0.6 }}
+              onClick={() => {
+                send({ type: "lantern", targets: picks });
+                close();
+              }}
+            >
+              {picks.length === 3 ? "🏮 Light it!" : `Pick ${3 - picks.length} more`}
+            </button>
+            <button className="btn ghost" style={{ fontSize: "1.15rem" }} onClick={close}>
+              Not now
+            </button>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 // ─── Meeting ─────────────────────────────────────────────────
 
 function Meeting({ s, me, now, send }: { s: View; me: Me; now: number; send: Send }) {
@@ -1028,9 +1094,11 @@ function Meeting({ s, me, now, send }: { s: View; me: Me; now: number; send: Sen
       );
     }
     const ready = m.readyToVote.includes(me.id);
+    const canLantern = me.special === "lantern" && !me.lanternUsed && !m.lantern && living.filter((p) => p.id !== me.id).length >= 3;
     return (
       <Center>
         <h1 className="creep" style={{ fontSize: "2.4rem", lineHeight: 1 }}>Talk it out!</h1>
+        {canLantern && <LanternButton s={s} me={me} send={send} />}
         <button
           className={`btn ${ready ? "done" : "primary"} ready-vote`}
           disabled={ready}
@@ -1126,7 +1194,7 @@ function Over({ s, me }: { s: View; me: Me }) {
       <h1 className="creep over-result" style={{ color: won ? "#7fdc8a" : "var(--blood-bright)" }}>
         {won ? "You won!" : "You lost…"}
       </h1>
-      <p style={{ fontWeight: 800, fontSize: "1.2rem" }}>You were {me.role === "traitor" ? "😈 Possessed" : "a 🕯️ Mortal"}.</p>
+      <p style={{ fontWeight: 800, fontSize: "1.2rem" }}>You were {me.role === "traitor" ? "😈 Possessed" : me.special === "lantern" ? "the 🏮 Lantern Bearer" : "a 🕯️ Mortal"}.</p>
       <LookAtTV>Look at the TV to see who was who</LookAtTV>
     </Center>
   );
