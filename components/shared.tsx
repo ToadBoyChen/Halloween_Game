@@ -85,8 +85,26 @@ export function winText(s: View) {
 }
 
 export function SoulList({ players, big = false }: { players: P[]; big?: boolean }) {
+  if (big) {
+    // Lobby: the souls are the show, names are just a whisper beneath them.
+    return (
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "4vh 3.5vw", justifyContent: "center" }}>
+        {players.map((p) => (
+          <div key={p.id} className="fade-in" style={{ display: "grid", justifyItems: "center", gap: 20 }}>
+            <Soul color={p.color} size={96} dead={!p.alive} />
+            <span
+              className="flavor"
+              style={{ fontSize: "1.1rem", letterSpacing: "0.08em", color: "var(--dim)", opacity: p.alive ? 0.55 : 0.3 }}
+            >
+              {p.name}
+            </span>
+          </div>
+        ))}
+      </div>
+    );
+  }
   return (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: big ? 22 : 10, justifyContent: "center" }}>
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 10, justifyContent: "center" }}>
       {players.map((p) => (
         <div
           key={p.id}
@@ -94,13 +112,13 @@ export function SoulList({ players, big = false }: { players: P[]; big?: boolean
           style={{
             display: "flex",
             alignItems: "center",
-            gap: big ? 12 : 8,
-            fontSize: big ? "1.8rem" : "1rem",
+            gap: 8,
+            fontSize: "1rem",
             opacity: p.alive ? 1 : 0.5,
             textDecoration: p.alive ? "none" : "line-through",
           }}
         >
-          <Soul color={p.color} size={big ? 34 : 16} dead={!p.alive} />
+          <Soul color={p.color} size={16} dead={!p.alive} />
           {p.name}
         </div>
       ))}

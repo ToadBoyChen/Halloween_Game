@@ -216,15 +216,17 @@ function Lobby({ s }: { s: View }) {
         </p>
       </div>
       <div style={{ display: "grid", gap: "3vh" }}>
-        <h2 className="creep glow" style={{ fontSize: "3.5vw" }}>Players: {s.players.length}</h2>
-        <div className="panel" style={{ padding: "3vh 2vw", minHeight: "30vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <h2 className="flavor" style={{ fontSize: "1.4vw", letterSpacing: "0.3em", textTransform: "uppercase", color: "var(--dim)", opacity: 0.5 }}>
+          {s.players.length} {s.players.length === 1 ? "soul" : "souls"} gathered
+        </h2>
+        <div className="panel" style={{ padding: "6vh 3vw", minHeight: "38vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
           {s.players.length ? (
             <SoulList players={s.players} big />
           ) : (
             <p className="flicker" style={{ fontSize: "1.8vw", color: "var(--dim)" }}>Nobody here yet… scan the code!</p>
           )}
         </div>
-        <p style={{ fontSize: "1.8vw", color: need ? "var(--dim)" : "var(--candle)" }}>
+        <p className="flavor" style={{ fontSize: need ? "1.3vw" : "1.8vw", color: need ? "var(--dim)" : "var(--candle)", opacity: need ? 0.45 : 1 }}>
           {need ? `Need ${need} more player${need === 1 ? "" : "s"} to start` : `Ready! ${s.traitorCount} of you will be Possessed…`}
         </p>
         {!need && (
