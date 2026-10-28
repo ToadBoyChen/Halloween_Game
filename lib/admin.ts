@@ -1,6 +1,7 @@
 import { BLOOD_MOON } from "@/config/bloodmoon";
+import { RITUALS } from "@/config/rituals";
 import { SOUL_COLORS } from "@/config/game";
-import { act, host, join, GameError, progress, summonReadyAt, type Game, type Player, type Role } from "./game";
+import { act, checkAndEnd, host, hushed, join, traitorCount, GameError, progress, summonReadyAt, type Game, type Player, type Role } from "./game";
 
 // Admin controls: run the game (start, skip timers, Blood Moon) and test it alone
 // with bot players. Used by the /admin page. Set ADMIN_TOOLS=off to disable.
@@ -11,7 +12,7 @@ export type AdminAction = {
   name?: string; // which player (defaults to the only human)
   role?: string; // "traitor" | "member"
   target?: string; // vote target: a name, "skip", or "random"
-  pct?: number; // percent of bot tasks to complete
+  pct?: number; // percent of the remaining ritual pool for bots to finish
 };
 
 const BOT_NAMES = ["Casper", "Boo", "Ghoulia", "Mort", "Wisp", "Banshee", "Crypt", "Lurch", "Spook", "Raven", "Igor"];
@@ -43,12 +44,12 @@ function forceRole(g: Game, p: Player, role: Role) {
   p.role = role;
 }
 
-// Let the Possessed kill and summon right now.
+// Let meetings be called and the Blood Moon or the Hush be used right now.
 function skipCooldowns(g: Game, now: number) {
   g.startedAt = Math.min(g.startedAt, now - g.settings.bloodMoonGrace * 1000 - 1);
   g.bloodMoon.lastEndedAt = 0;
-  g.players.forEach((p) => (p.lastKillAt = now - g.settings.killCooldown * 1000 - 1));
-  if (g.bell) g.bell.readyAt = 0;
+  if (!hushed(g, now)) g.hush = { endsAt: 0 };
+  g.meetingsReadyAt = 0;
 }
 
 export function runAdmin(g: Game, a: AdminAction, now: number): unknown {
@@ -72,8 +73,8 @@ export function runAdmin(g: Game, a: AdminAction, now: number): unknown {
       return { ok: true };
 
     case "fast":
-      host(g, { type: "settings", settings: { discussion: 15, voting: 15, killCooldown: 10 } }, now);
-      return { ok: true, note: "Discussion 15s, voting 15s, kill cooldown 10s." };
+      host(g, { type: "settings", settings: { discussion: 15, voting: 15, meetingCooldown: 30 } }, now);
+      return { ok: true, note: "Discussion 15s, voting 15s, meeting cooldown 30s." };
 
     case "start": {
       host(g, { type: "start" }, now);
@@ -97,41 +98,78 @@ export function runAdmin(g: Game, a: AdminAction, now: number): unknown {
 
     case "cooldowns":
       skipCooldowns(g, now);
-      return { ok: true, note: "Kill cooldowns, the bell cooldown and the Blood Moon wait are cleared." };
+      return { ok: true, note: "The meeting cooldown and the Blood Moon wait are cleared." };
 
     case "moon":
       host(g, { type: "summonMoon" }, now);
       return { ok: true, code: currentCode(g) };
 
+    case "hush":
+      if (g.phase !== "playing") fail("Not now.");
+      g.hush = { endsAt: now + g.settings.hushDuration * 1000 };
+      return { ok: true };
+
+    case "unhush":
+      g.hush = { endsAt: now };
+      return { ok: true };
+
+    // Bots claim and finish rituals from the pool (in order, so chains unlock as they go).
     case "bottasks": {
       const pct = Math.max(0, Math.min(Number(a.pct ?? 100), 100)) / 100;
-      for (const b of g.players.filter((p) => p.bot)) {
-        const todo = b.tasks.filter((t) => !t.done);
-        const count = Math.ceil(b.tasks.length * pct) - (b.tasks.length - todo.length);
-        for (const t of todo.slice(0, Math.max(0, count))) {
-          if (g.phase !== "playing") break;
-          act(g, b, { type: "task", id: t.id, done: true }, now);
-        }
+      const bots = g.players.filter((p) => p.bot);
+      if (!bots.length) fail("No bots.");
+      let count = Math.ceil(g.pool.filter((e) => !e.doneBy).length * pct);
+      for (let i = 0; count > 0 && g.phase === "playing"; i++) {
+        const e = g.pool.find((x) => !x.doneBy && !x.claimedBy && !g.pool.some((y) => y.id === ritualNeeds(x.id) && !y.doneBy));
+        if (!e) break;
+        const b = bots[i % bots.length];
+        act(g, b, { type: "claim", id: e.id }, now);
+        act(g, b, { type: "done", id: e.id }, now);
+        count--;
       }
       return { progress: progress(g) };
     }
 
+    // Host fixes: kill anyone (their body counts as found) or bring anyone back.
+    case "kill": {
+      const p = findPlayer(g, a.name);
+      if (g.phase !== "playing" && g.phase !== "meeting") fail("Not now.");
+      if (!p.alive) fail(`${p.name} is already dead.`);
+      p.alive = false;
+      p.diedAt = now;
+      p.foundBy = null;
+      if (g.meeting) delete g.meeting.votes[p.id];
+      checkAndEnd(g);
+      return { killed: p.name };
+    }
+
+    case "revive": {
+      const p = findPlayer(g, a.name);
+      if (g.phase !== "playing" && g.phase !== "meeting") fail("Not now.");
+      if (p.alive) fail(`${p.name} is already alive.`);
+      p.alive = true;
+      p.ejected = false;
+      p.foundBy = null;
+      if (g.meeting) g.meeting.newlyDead = g.meeting.newlyDead.filter((id) => id !== p.id);
+      return { revived: p.name };
+    }
+
+    // A living bot finds the body (without calling a meeting).
     case "botkill": {
       const victim = a.name ? findPlayer(g, a.name) : pick(livingBots(g, "member"));
       if (!victim) fail("No living Mortal bots to kill.");
-      act(g, victim!, { type: "claimed" }, now);
-      return { killed: victim!.name };
+      const finder = pick(g.players.filter((p) => p.bot && p.alive && p.id !== victim!.id)) ?? fail("No living bot to find the body.");
+      act(g, finder, { type: "report", id: victim!.id, meeting: false }, now);
+      return { killed: victim!.name, foundBy: finder.name };
     }
 
+    // A living bot finds a living Mortal bot's body and calls a meeting.
     case "botreport": {
-      const bot = pick(livingBots(g)) ?? fail("No living bots.");
-      act(g, bot, { type: "report" }, now);
-      return { by: bot.name };
+      const victim = pick(livingBots(g, "member")) ?? fail("No living Mortal bots.");
+      const finder = pick(g.players.filter((p) => p.bot && p.alive && p.id !== victim.id)) ?? fail("No living bot to find the body.");
+      act(g, finder, { type: "report", id: victim.id, meeting: true }, now);
+      return { killed: victim.name, by: finder.name };
     }
-
-    case "bell":
-      host(g, { type: "bell" }, now);
-      return { ok: true };
 
     case "botvote": {
       if (g.phase !== "meeting" || g.meeting?.stage !== "voting") fail("Not in the voting stage. Use do=skip to get there.");
@@ -170,6 +208,8 @@ export function runAdmin(g: Game, a: AdminAction, now: number): unknown {
   }
 }
 
+const ritualNeeds = (id: string) => RITUALS.find((r) => r.id === id)?.requires;
+
 function currentCode(g: Game) {
   if (!g.bloodMoon.active) return null;
   const seal = BLOOD_MOON.seals[g.bloodMoon.seal];
@@ -190,7 +230,12 @@ export function debugView(g: Game) {
     progress: progress(g),
     settings: g.settings,
     ready: g.players.filter((p) => p.ready).length,
+    traitorCount: g.players.length ? traitorCount(g) : 0,
     votes: m ? Object.keys(m.votes).length : 0,
+    readyToVote: m?.readyToVote?.length ?? 0,
+    living: g.players.filter((p) => p.alive).length,
+    meetingsIn: g.phase === "playing" ? Math.max(0, Math.round(((g.meetingsReadyAt ?? 0) - now) / 1000)) : 0,
+    hushIn: g.phase === "playing" && hushed(g, now) ? Math.round((g.hush!.endsAt - now) / 1000) : 0,
     bloodMoon: {
       active: bm.active,
       endsIn: bm.active ? Math.max(0, Math.round((bm.endsAt - now) / 1000)) : 0,
@@ -198,12 +243,21 @@ export function debugView(g: Game) {
       cards: bm.active ? BLOOD_MOON.seals[bm.seal].cards : [],
       sealedBy: bm.active ? (bm.sealed ?? []).map(nameOf) : [],
     },
-    players: g.players.map((p) => ({
-      name: p.name,
-      bot: !!p.bot,
-      role: p.role,
-      alive: p.alive,
-      tasks: `${p.tasks.filter((t) => t.done).length}/${p.tasks.length}`,
-    })),
+    players: g.players.map((p, i) => {
+      const claim = g.pool.find((e) => e.claimedBy === p.id && !e.doneBy && now - e.claimedAt < g.settings.claimTimeout * 1000);
+      return {
+        num: p.num ?? i + 1,
+        name: p.name,
+        color: p.color,
+        bot: !!p.bot,
+        role: p.role,
+        alive: p.alive,
+        ejected: p.ejected,
+        foundBy: p.foundBy ? nameOf(p.foundBy) : null,
+        meetingsLeft: Math.max(0, g.settings.meetingsPerPlayer - (p.meetingsCalled ?? 0)),
+        rituals: g.pool.filter((e) => e.doneBy === p.id).length,
+        doing: claim ? (RITUALS.find((r) => r.id === claim.id)?.name ?? claim.id) : null,
+      };
+    }),
   };
 }

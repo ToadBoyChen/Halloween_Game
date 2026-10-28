@@ -3,6 +3,8 @@
 //
 //  Add a ritual:     add an entry below (id must be unique).
 //  Remove a ritual:  delete it, or set `enabled: false`.
+//  Chain rituals:    set `requires` to another ritual's id. It stays
+//                    locked until that one is done. Keep chains 1–2 deep.
 //  You can also switch rituals on/off in the hub lobby without
 //  redeploying.
 // ─────────────────────────────────────────────────────────────
@@ -12,6 +14,7 @@ export type Ritual = {
   name: string;
   location: string;
   instructions: string;
+  requires?: string; // id of a ritual that must be done first
   enabled?: boolean;
 };
 
@@ -36,24 +39,28 @@ export const RITUALS: Ritual[] = [
   },
   {
     id: "closet",
+    requires: "hallway",
     name: "The Dark Closet",
     location: "Hallway closet",
     instructions: "Step inside, close the door, and count slowly to 30 in the dark.",
   },
   {
     id: "fridge",
+    requires: "sink",
     name: "Feed the Hungry Thing",
     location: "Kitchen",
     instructions: "Open the fridge and whisper your full name into it. Close it gently.",
   },
   {
     id: "stairs",
+    requires: "closet",
     name: "Thirteen Steps",
     location: "Stairs",
     instructions: "Stand on the stairs with your eyes closed and count to 13.",
   },
   {
     id: "door",
+    requires: "frontdoor",
     name: "Knock for the Dead",
     location: "Back door",
     instructions: "Knock three times on the back door. Wait. Knock once more.",

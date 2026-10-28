@@ -1,4 +1,4 @@
-import { RITUALS } from "@/config/rituals";
+import { RITUALS, type Ritual } from "@/config/rituals";
 import { BLOOD_MOON } from "@/config/bloodmoon";
 import {
   DEFAULT_SETTINGS,
@@ -23,22 +23,33 @@ export type Player = {
   name: string;
   color: string;
   role: Role | null;
-  alive: boolean;
-  deathKnown: boolean; // revealed to everyone (at a séance or by ejection)
+  alive: boolean; // false once someone reports their body, or they're voted out
+  diedAt?: number;
+  foundBy?: string | null; // who reported their body
   ejected: boolean;
-  tasks: { id: string; done: boolean }[];
-  lastKillAt: number;
+  meetingsCalled?: number;
+  num?: number; // fixed when the game starts, so kicking someone doesn't renumber everyone
   bot?: boolean; // test bot (see lib/testing.ts)
   ready?: boolean; // pressed "I'm ready" after seeing their role
+};
+
+// One ritual in the shared pool. Anyone can claim it, then finish it.
+export type PoolRitual = {
+  id: string;
+  claimedBy: string | null;
+  claimedAt: number;
+  doneBy: string | null;
+  doneAt: number;
 };
 
 export type Meeting = {
   stage: Stage;
   endsAt: number;
-  reason: "report" | "bell" | "host";
+  reason: "report" | "emergency" | "host";
   callerId: string | null;
   newlyDead: string[];
   votes: Record<string, string>; // voterId -> targetId | "skip"
+  readyToVote?: string[]; // living players who tapped "Ready to vote" during talk time
   result: { ejectedId: string | null; tie: boolean; counts: Record<string, number> } | null;
 };
 
@@ -51,7 +62,10 @@ export type Game = {
   settings: Settings;
   disabled: string[];
   players: Player[];
+  pool: PoolRitual[];
   meeting: Meeting | null;
+  // The Hush: a Possessed event. Nobody can call a meeting until it ends.
+  hush?: { endsAt: number };
   bloodMoon: {
     active: boolean;
     endsAt: number;
@@ -64,8 +78,8 @@ export type Game = {
     savedBy: string[]; // player ids who stopped the last Blood Moon
     savedAt: number;
   };
-  // The emergency bell is rung from the TV keyboard, so its limit and cooldown are shared.
-  bell: { used: number; readyAt: number };
+  meetingsReadyAt: number; // nobody can call a meeting before this
+  lastMeetingAt: number; // when play last started or resumed
   winner: { side: Role; reason: WinReason } | null;
 };
 
@@ -87,9 +101,11 @@ export function newGame(): Game {
     settings: { ...DEFAULT_SETTINGS },
     disabled: RITUALS.filter((r) => r.enabled === false).map((r) => r.id),
     players: [],
+    pool: [],
     meeting: null,
     bloodMoon: freshMoon(),
-    bell: { used: 0, readyAt: 0 },
+    meetingsReadyAt: 0,
+    lastMeetingAt: 0,
     winner: null,
   };
 }
@@ -114,31 +130,45 @@ function shuffle<T>(arr: T[]): T[] {
 const enabledRituals = (g: Game) => RITUALS.filter((r) => !g.disabled.includes(r.id));
 const ritual = (id: string) => RITUALS.find((r) => r.id === id);
 
-// Hand out rituals, preferring the least-assigned ones so players spread out.
-function assignTasks(g: Game) {
-  const pool = enabledRituals(g);
-  const per = Math.min(g.settings.tasksPerPlayer, pool.length);
-  const load = new Map(pool.map((r) => [r.id, 0]));
-  for (const p of shuffle(g.players)) {
-    const picks = shuffle(pool)
-      .sort((a, b) => load.get(a.id)! - load.get(b.id)!)
-      .slice(0, per);
-    picks.forEach((r) => load.set(r.id, load.get(r.id)! + 1));
-    p.tasks = shuffle(picks).map((r) => ({ id: r.id, done: false }));
+// Fill the shared pool with random rituals, pulling in whatever each one requires.
+function buildPool(g: Game) {
+  const enabled = enabledRituals(g);
+  const on = new Set(enabled.map((r) => r.id));
+  const want = Math.min(enabled.length, g.settings.ritualsPerPlayer * g.players.length);
+  const picked = new Set<string>();
+  for (const r of shuffle(enabled)) {
+    if (picked.size >= want) break;
+    for (let x: Ritual | undefined = r; x && on.has(x.id) && !picked.has(x.id); x = x.requires ? ritual(x.requires) : undefined) {
+      picked.add(x.id);
+    }
   }
+  g.pool = enabled.filter((r) => picked.has(r.id)).map((r) => ({ id: r.id, claimedBy: null, claimedAt: 0, doneBy: null, doneAt: 0 }));
 }
 
 // ─── Rules ───────────────────────────────────────────────────
 
+const poolOf = (g: Game) => g.pool ?? [];
+
+// Who holds a ritual right now. Claims lapse after the timeout so nobody can sit on one.
+function holder(g: Game, e: PoolRitual, now: number) {
+  return e.claimedBy && now - e.claimedAt < g.settings.claimTimeout * 1000 ? e.claimedBy : null;
+}
+
+// The ritual this one waits on, if it's in the pool.
+function prerequisite(g: Game, e: PoolRitual) {
+  const req = ritual(e.id)?.requires;
+  return req ? poolOf(g).find((x) => x.id === req) : undefined;
+}
+
+// The ritual this one waits on, if it's not done yet.
+function blocker(g: Game, e: PoolRitual) {
+  const before = prerequisite(g, e);
+  return before && !before.doneBy ? before : null;
+}
+
 export function progress(g: Game) {
-  let done = 0;
-  let total = 0;
-  for (const p of g.players) {
-    if (p.role !== "member") continue;
-    total += p.tasks.length;
-    done += p.tasks.filter((t) => t.done).length;
-  }
-  return { done, total };
+  const pool = poolOf(g);
+  return { done: pool.filter((e) => e.doneBy).length, total: pool.length };
 }
 
 function checkWin(g: Game): Game["winner"] {
@@ -159,18 +189,20 @@ function endGame(g: Game, winner: NonNullable<Game["winner"]>) {
   g.bloodMoon.active = false;
 }
 
-function checkAndEnd(g: Game) {
+export function checkAndEnd(g: Game) {
   const w = checkWin(g);
   if (w) endGame(g, w);
 }
 
 function startMeeting(g: Game, reason: Meeting["reason"], callerId: string | null, now: number) {
-  const newlyDead = g.players.filter((p) => !p.alive && !p.deathKnown);
-  newlyDead.forEach((p) => (p.deathKnown = true));
+  const newlyDead = g.players.filter((p) => !p.alive && !p.ejected && (p.diedAt ?? 0) >= (g.lastMeetingAt ?? 0));
+  // Everyone regroups at the TV, so claims are dropped.
+  poolOf(g).forEach((e) => (e.claimedBy = null));
   if (g.bloodMoon.active) {
     g.bloodMoon.active = false;
     g.bloodMoon.lastEndedAt = now;
   }
+  if (hushed(g, now)) g.hush = { endsAt: now };
   g.phase = "meeting";
   g.meeting = {
     stage: "summons",
@@ -194,7 +226,7 @@ function resolveVotes(g: Game, now: number) {
   if (ejectedId) {
     const p = g.players.find((x) => x.id === ejectedId)!;
     p.alive = false;
-    p.deathKnown = true;
+    p.diedAt = now;
     p.ejected = true;
   }
   m.result = { ejectedId, tie, counts };
@@ -221,8 +253,8 @@ export function advance(g: Game, now: number): boolean {
       } else {
         g.meeting = null;
         g.phase = "playing";
-        g.players.forEach((p) => (p.lastKillAt = now));
-        g.bell = { used: g.bell?.used ?? 0, readyAt: now + g.settings.bellCooldown * 1000 };
+        g.lastMeetingAt = now;
+        g.meetingsReadyAt = now + g.settings.meetingCooldown * 1000;
         checkAndEnd(g);
       }
     } else {
@@ -250,10 +282,7 @@ export function join(g: Game, name: string, color: string) {
     color,
     role: null,
     alive: true,
-    deathKnown: false,
     ejected: false,
-    tasks: [],
-    lastKillAt: 0,
   };
   g.players.push(player);
   return player;
@@ -261,9 +290,13 @@ export function join(g: Game, name: string, color: string) {
 
 export type Action =
   | { type: "leave" }
-  | { type: "task"; id: string; done: boolean }
-  | { type: "claimed" }
-  | { type: "report" }
+  | { type: "claim"; id: string }
+  | { type: "release" }
+  | { type: "done"; id: string }
+  | { type: "report"; id: string; meeting: boolean }
+  | { type: "alive" }
+  | { type: "hush" }
+  | { type: "readyVote" }
   | { type: "vote"; target: string }
   | { type: "summon" }
   | { type: "ready" }
@@ -277,30 +310,89 @@ export function act(g: Game, p: Player, a: Action, now: number) {
       g.players = g.players.filter((x) => x.id !== p.id);
       return;
 
-    case "task": {
+    // Rituals come from one shared pool. Everyone's count, even the Possessed's, and
+    // ghosts keep finishing them. You hold one claim at a time.
+    case "claim": {
       if (!playing) fail("Not now.");
-      const t = p.tasks.find((x) => x.id === a.id) ?? fail("That isn't your task.");
-      t.done = a.done;
+      const e = poolOf(g).find((x) => x.id === a.id) ?? fail("That ritual isn't in this game.");
+      if (e.doneBy) fail("That ritual is already done.");
+      const who = holder(g, e, now);
+      if (who === p.id) return;
+      if (who) fail("Someone else has claimed that ritual.");
+      const before = blocker(g, e);
+      if (before) fail(`Locked until “${ritual(before.id)?.name}” is done.`);
+      poolOf(g).forEach((x) => x.claimedBy === p.id && (x.claimedBy = null));
+      e.claimedBy = p.id;
+      e.claimedAt = now;
+      return;
+    }
+
+    case "release":
+      poolOf(g).forEach((x) => x.claimedBy === p.id && (x.claimedBy = null));
+      return;
+
+    case "done": {
+      if (!playing) fail("Not now.");
+      const e = poolOf(g).find((x) => x.id === a.id) ?? fail("That ritual isn't in this game.");
+      if (e.doneBy) fail("That ritual is already done.");
+      if (e.claimedBy !== p.id) fail("Claim the ritual first.");
+      e.doneBy = p.id;
+      e.doneAt = now;
+      e.claimedBy = null;
+      // Every finished ritual fills the meeting ring a little faster (2–5s off the wait).
+      if (g.meetingsReadyAt > now) g.meetingsReadyAt = Math.max(now, g.meetingsReadyAt - (2 + Math.random() * 3) * 1000);
       checkAndEnd(g);
       return;
     }
 
-    case "claimed":
+    // Found a body: it becomes a ghost, and the finder can call a meeting right away. That
+    // doesn't wait for the meeting ring or use up their emergency meeting (that's the TV's
+    // button). Only the Hush and the Blood Moon stop it.
+    case "report": {
       if (!playing) fail("Not now.");
-      if (!p.alive) fail("You are already a ghost.");
-      if (p.role === "traitor") fail("The Possessed can't be killed.");
-      p.alive = false;
-      // We don't know which Possessed did it, so every Possessed shares one kill cooldown.
-      g.players.filter((x) => x.role === "traitor").forEach((x) => (x.lastKillAt = now));
+      if (!p.alive) fail("Ghosts can't report bodies.");
+      const body = g.players.find((x) => x.id === a.id) ?? fail("Pick whose body you found.");
+      if (body.id === p.id) fail("That's you!");
+      if (!body.alive) fail("They're already a ghost.");
+      if (a.meeting && g.bloodMoon.active) fail("No meetings during the Blood Moon!");
+      if (a.meeting && hushed(g, now)) fail("The Hush is on. No meetings!");
+      body.alive = false;
+      body.diedAt = now;
+      body.foundBy = p.id;
       checkAndEnd(g);
+      if (a.meeting && g.phase === "playing") startMeeting(g, "report", p.id, now);
+      return;
+    }
+
+    // The Hush: no meetings for a while. It shares the Blood Moon's cooldown.
+    case "hush":
+      if (!playing || p.role !== "traitor") fail("Not now.");
+      if (!g.settings.hush) fail("The Hush is turned off.");
+      if (g.bloodMoon.active || hushed(g, now)) fail("Something is already happening.");
+      if (now < summonReadyAt(g)) fail("Not ready yet.");
+      g.hush = { endsAt: now + g.settings.hushDuration * 1000 };
       return;
 
-    case "report":
-      if (!playing) fail("Not now.");
-      if (!p.alive) fail("Ghosts can't do that.");
-      if (g.bloodMoon.active) fail("No meetings during the Blood Moon!");
-      startMeeting(g, "report", p.id, now);
+    // Reported by mistake (or by a lying Possessed): undo it, until the next meeting is over.
+    case "alive":
+      if (!canRevive(g, p)) fail("Too late to come back now.");
+      p.alive = true;
+      p.foundBy = null;
+      if (g.meeting) g.meeting.newlyDead = g.meeting.newlyDead.filter((id) => id !== p.id);
       return;
+
+    // Talk time ends early once every living player is ready to vote.
+    case "readyVote": {
+      const m = g.meeting;
+      if (g.phase !== "meeting" || m?.stage !== "discussion") fail("Talk time is over.");
+      if (!p.alive) fail("Ghosts can't vote.");
+      m!.readyToVote = [...new Set([...(m!.readyToVote ?? []), p.id])];
+      if (g.players.filter((x) => x.alive).every((x) => m!.readyToVote!.includes(x.id))) {
+        m!.stage = "voting";
+        m!.endsAt = now + g.settings.voting * 1000;
+      }
+      return;
+    }
 
     case "vote": {
       const m = g.meeting;
@@ -320,6 +412,7 @@ export function act(g: Game, p: Player, a: Action, now: number) {
       if (!playing || p.role !== "traitor") fail("Not now.");
       if (!g.settings.bloodMoon) fail("The Blood Moon is turned off.");
       if (bm.active) fail("The Blood Moon is already rising.");
+      if (hushed(g, now)) fail("Something is already happening.");
       const readyAt = summonReadyAt(g);
       if (now < readyAt) fail("The Blood Moon isn't ready yet.");
       let choices = BLOOD_MOON.seals.map((_, i) => i).filter((i) => !bm.used.includes(i));
@@ -372,10 +465,12 @@ export function act(g: Game, p: Player, a: Action, now: number) {
   }
 }
 
+// When the Possessed can next summon the Blood Moon or call the Hush (one shared cooldown).
 export function summonReadyAt(g: Game) {
   return Math.max(
     g.startedAt + g.settings.bloodMoonGrace * 1000,
     g.bloodMoon.lastEndedAt ? g.bloodMoon.lastEndedAt + g.settings.bloodMoonCooldown * 1000 : 0,
+    g.hush?.endsAt ? g.hush.endsAt + g.settings.bloodMoonCooldown * 1000 : 0,
   );
 }
 
@@ -408,9 +503,22 @@ function beginHaunting(g: Game, now: number) {
   g.phase = "playing";
   g.phaseEndsAt = 0;
   g.startedAt = now;
-  g.players.forEach((p) => (p.lastKillAt = now));
-  g.bell = { used: 0, readyAt: now + g.settings.bellCooldown * 1000 };
+  g.lastMeetingAt = now;
+  g.meetingsReadyAt = now + g.settings.meetingCooldown * 1000;
 }
+
+export const hushed = (g: Game, now: number) => now < (g.hush?.endsAt ?? 0);
+
+function checkCanCall(g: Game, p: Player, now: number) {
+  if (g.bloodMoon.active) fail("No meetings during the Blood Moon!");
+  if (hushed(g, now)) fail("The Hush is on. No meetings!");
+  if ((p.meetingsCalled ?? 0) >= g.settings.meetingsPerPlayer) fail("You've used all your meetings.");
+  if (now < (g.meetingsReadyAt ?? 0)) fail("The meeting ring isn't full yet.");
+}
+
+const canRevive = (g: Game, p: Player) =>
+  g.settings.revive &&
+  !p.alive && !!p.foundBy && !p.ejected && (g.phase === "playing" || g.phase === "meeting") && (p.diedAt ?? 0) >= (g.lastMeetingAt ?? 0);
 
 // ─── Host actions ────────────────────────────────────────────
 
@@ -420,7 +528,7 @@ export type HostAction =
   | { type: "toggleRitual"; id: string }
   | { type: "kick"; id: string }
   | { type: "meeting" }
-  | { type: "bell" }
+  | { type: "emergency"; id: string }
   | { type: "skip" }
   | { type: "cancelMoon" }
   | { type: "summonMoon" }
@@ -435,14 +543,16 @@ export function host(g: Game, a: HostAction, now: number) {
       if (enabledRituals(g).length === 0) fail("Enable at least one ritual.");
       const k = traitorCount(g);
       const traitors = new Set(shuffle(g.players).slice(0, k).map((p) => p.id));
+      g.players.forEach((p, i) => (p.num = i + 1));
       for (const p of g.players) {
         p.role = traitors.has(p.id) ? "traitor" : "member";
         p.alive = true;
-        p.deathKnown = false;
+        p.diedAt = 0;
+        p.foundBy = null;
         p.ejected = false;
-        p.lastKillAt = 0;
+        p.meetingsCalled = 0;
       }
-      assignTasks(g);
+      buildPool(g);
       g.phase = "reveal";
       g.phaseEndsAt = 0; // no timer: the game starts when everyone presses "I'm ready"
       g.players.forEach((p) => (p.ready = !!p.bot));
@@ -450,6 +560,7 @@ export function host(g: Game, a: HostAction, now: number) {
       g.meeting = null;
       g.winner = null;
       g.bloodMoon = freshMoon();
+      g.hush = { endsAt: 0 };
       return;
     }
 
@@ -479,15 +590,14 @@ export function host(g: Game, a: HostAction, now: number) {
       startMeeting(g, "host", null, now);
       return;
 
-    // Any key on the TV keyboard. Nobody knows who pressed it.
-    case "bell": {
+    // The emergency button on the TV: whoever pressed it picks their name and spends their meeting.
+    case "emergency": {
       if (g.phase !== "playing") fail("Not now.");
-      if (g.bloodMoon.active) fail("No meetings during the Blood Moon!");
-      const bell = g.bell ?? { used: 0, readyAt: 0 };
-      if (bell.used >= g.settings.bells) fail("The bell has rung its last.");
-      if (now < bell.readyAt) fail(`The bell is silent for ${Math.ceil((bell.readyAt - now) / 1000)}s more.`);
-      g.bell = { used: bell.used + 1, readyAt: bell.readyAt };
-      startMeeting(g, "bell", null, now);
+      const p = g.players.find((x) => x.id === a.id) ?? fail("Pick your name.");
+      if (!p.alive) fail("Ghosts can't call meetings.");
+      checkCanCall(g, p, now);
+      p.meetingsCalled = (p.meetingsCalled ?? 0) + 1;
+      startMeeting(g, "emergency", p.id, now);
       return;
     }
 
@@ -502,6 +612,7 @@ export function host(g: Game, a: HostAction, now: number) {
       const traitor = g.players.find((p) => p.role === "traitor") ?? fail("No Possessed in this game.");
       g.startedAt = Math.min(g.startedAt, now - g.settings.bloodMoonGrace * 1000 - 1);
       g.bloodMoon.lastEndedAt = 0;
+      g.hush = { endsAt: 0 };
       act(g, traitor, { type: "summon" }, now);
       return;
     }
@@ -518,10 +629,10 @@ export function host(g: Game, a: HostAction, now: number) {
       g.meeting = null;
       g.winner = null;
       g.bloodMoon.active = false;
+      g.pool = [];
       g.players.forEach((p) => {
         p.role = null;
         p.alive = true;
-        p.tasks = [];
       });
       return;
 
@@ -549,15 +660,37 @@ export function publicView(g: Game, now: number) {
     settings: g.settings,
     minPlayers: minPlayers(),
     traitorCount: g.players.length ? traitorCount(g) : 0,
-    players: g.players.map((p) => ({
+    players: g.players.map((p, i) => ({
       id: p.id,
+      num: g.phase === "lobby" ? i + 1 : (p.num ?? i + 1), // typed on the TV keyboard to call a meeting
       name: p.name,
       color: p.color,
-      alive: over ? p.alive : !(p.deathKnown && !p.alive),
+      alive: p.alive,
       ejected: p.ejected,
       role: over ? p.role : null,
+      foundBy: !p.alive && p.foundBy ? nameOf(p.foundBy) : null,
+      meetingsLeft: Math.max(0, g.settings.meetingsPerPlayer - (p.meetingsCalled ?? 0)),
     })),
     progress: g.phase === "lobby" ? { done: 0, total: 0 } : progress(g),
+    pool: g.phase === "lobby" ? [] : poolOf(g).map((e) => {
+      const r = ritual(e.id);
+      const who = holder(g, e, now);
+      const before = blocker(g, e);
+      return {
+        id: e.id,
+        name: r?.name ?? e.id,
+        location: r?.location ?? "",
+        instructions: r?.instructions ?? "",
+        claimedBy: who && !e.doneBy ? nameOf(who) : null,
+        claimedById: who && !e.doneBy ? who : null,
+        claimEndsAt: who && !e.doneBy ? e.claimedAt + g.settings.claimTimeout * 1000 : 0,
+        doneBy: e.doneBy ? nameOf(e.doneBy) : null,
+        doneAt: e.doneBy ? e.doneAt : 0,
+        lockedBy: before ? (ritual(before.id)?.name ?? before.id) : null,
+        // A chained ritual whose lock has opened (shown as 🔓 until someone does it).
+        unlockedBy: !before && !e.doneBy && prerequisite(g, e) ? (ritual(prerequisite(g, e)!.id)?.name ?? null) : null,
+      };
+    }),
     meeting: m && {
       stage: m.stage,
       endsAt: m.endsAt,
@@ -565,6 +698,7 @@ export function publicView(g: Game, now: number) {
       callerId: m.callerId,
       newlyDead: m.newlyDead,
       voted: Object.keys(m.votes),
+      readyToVote: m.readyToVote ?? [],
       result: verdict
         ? {
             ...m.result!,
@@ -581,10 +715,9 @@ export function publicView(g: Game, now: number) {
       savedBy: (bm.savedBy ?? []).map(nameOf),
       savedAt: bm.savedAt ?? 0,
     },
-    bell: {
-      left: Math.max(0, g.settings.bells - (g.bell?.used ?? 0)),
-      readyAt: g.bell?.readyAt ?? 0,
-    },
+    meetingsFrom: g.lastMeetingAt ?? 0, // the meeting ring fills from here to meetingsReadyAt
+    meetingsReadyAt: g.meetingsReadyAt ?? 0,
+    hush: { active: g.phase === "playing" && hushed(g, now), endsAt: g.hush?.endsAt ?? 0 },
     readyIds: g.phase === "reveal" ? g.players.filter((p) => p.ready).map((p) => p.id) : [],
     winner: over ? g.winner : null,
     rituals: RITUALS.map((r) => ({
@@ -608,44 +741,14 @@ export function playerView(g: Game, p: Player, now: number) {
       alive: p.alive,
       ejected: p.ejected,
       vote: g.meeting?.votes[p.id] ?? null,
-      tasks: p.tasks.map((t) => {
-        const r = ritual(t.id);
-        return {
-          id: t.id,
-          done: t.done,
-          name: r?.name ?? t.id,
-          location: r?.location ?? "",
-          instructions: r?.instructions ?? "",
-        };
-      }),
       allies: traitor ? g.players.filter((x) => x.role === "traitor" && x.id !== p.id).map((x) => x.name) : [],
-      killReadyAt: traitor ? p.lastKillAt + g.settings.killCooldown * 1000 : 0,
-      summonReadyAt: traitor && g.settings.bloodMoon ? summonReadyAt(g) : 0,
+      summonReadyAt: traitor && (g.settings.bloodMoon || g.settings.hush) ? summonReadyAt(g) : 0,
       ready: !!p.ready,
+      canRevive: canRevive(g, p),
       sealLockedUntil: g.bloodMoon.lockouts?.[p.id] ?? 0,
     },
   };
 }
-
-// The Spirit Board (a station on a desktop in the house), like Among Us vitals: who is
-// truly alive or dead, including kills nobody has reported. Never shows roles or killers.
-// It goes dark during a Blood Moon.
-export function spiritView(g: Game) {
-  const active = g.phase === "playing" || g.phase === "meeting" || g.phase === "over";
-  return {
-    phase: g.phase,
-    silenced: g.phase === "playing" && g.bloodMoon.active,
-    players: g.players.map((p) => ({
-      id: p.id,
-      name: p.name,
-      color: p.color,
-      alive: active ? p.alive : true,
-      ejected: active && p.ejected,
-    })),
-  };
-}
-
-export type SpiritView = ReturnType<typeof spiritView>;
 
 export type PublicView = ReturnType<typeof publicView>;
 export type PlayerView = ReturnType<typeof playerView>;

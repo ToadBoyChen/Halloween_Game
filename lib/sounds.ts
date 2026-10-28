@@ -8,10 +8,10 @@ import type { View } from "./client";
 // Used by both the TV and phones. They never fire for private actions, so a phone
 // in a dark hallway never gives its owner away.
 export function useEventSounds(s: View | null, enabled: boolean) {
-  const prev = useRef<{ phase: string; stage: string | null; moon: boolean } | null>(null);
+  const prev = useRef<{ phase: string; stage: string | null; moon: boolean; hush: boolean } | null>(null);
   useEffect(() => {
     if (!s) return;
-    const cur = { phase: s.phase, stage: s.meeting?.stage ?? null, moon: s.bloodMoon.active };
+    const cur = { phase: s.phase, stage: s.meeting?.stage ?? null, moon: s.bloodMoon.active, hush: s.hush.active };
     const p = prev.current;
     prev.current = cur;
     if (!p || !enabled) return; // nothing on first load
@@ -22,6 +22,7 @@ export function useEventSounds(s: View | null, enabled: boolean) {
       if (cur.stage === "verdict" && s.meeting?.result?.ejectedId) haunt.whoosh();
     }
     if (cur.moon && !p.moon) haunt.bloodMoon();
+    if (cur.hush && !p.hush) haunt.hush();
     if (!cur.moon && p.moon && cur.phase === "playing") haunt.relief();
     if (cur.phase === "over" && p.phase !== "over") {
       if (s.winner?.side === "traitor") haunt.sting();

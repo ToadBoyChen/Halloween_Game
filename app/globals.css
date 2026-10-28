@@ -114,19 +114,564 @@ button:disabled {
   background: radial-gradient(ellipse at center, transparent 45%, rgba(0, 0, 0, 0.92) 100%);
 }
 
+/* The washes fade in and out on opacity. Their pulse runs all the time on brightness,
+   so switching a wash off fades smoothly instead of snapping back. */
 .redwash {
   position: absolute;
   inset: 0;
   background: radial-gradient(ellipse at center, rgba(179, 0, 27, 0.25), rgba(80, 0, 10, 0.65));
   opacity: 0;
-  transition: opacity 1.2s;
+  transition: opacity 2.4s ease;
+  animation: pulse-red 2.2s ease-in-out infinite;
 }
 .redwash.on {
   opacity: 1;
-  animation: pulse-red 2.2s ease-in-out infinite;
 }
 @keyframes pulse-red {
+  50% { filter: brightness(0.55); }
+}
+
+/* The Hush: everything goes cold, grey and muffled. */
+.hushwash {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at center, rgba(90, 110, 140, 0.18), rgba(8, 12, 24, 0.78));
+  opacity: 0;
+  transition: opacity 2.4s ease;
+  animation: hush-breathe 4s ease-in-out infinite;
+}
+.hushwash.on {
+  opacity: 1;
+}
+@keyframes hush-breathe {
+  50% { filter: brightness(0.7); }
+}
+.screen {
+  transition: filter 2.4s ease;
+}
+.screen.hushed {
+  filter: saturate(0.35);
+}
+.hush-banner {
+  border-color: #9fb4d8;
+  color: #c8d6ee;
+}
+
+/* Meeting countdown ring (TV and phones) */
+.countdown {
+  position: relative;
+  display: grid;
+  place-items: center;
+}
+.countdown svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.countdown-time {
+  line-height: 1;
+  color: var(--ring);
+  text-shadow: 0 0 0.4em color-mix(in srgb, var(--ring) 60%, transparent);
+  transition: color 0.6s;
+}
+.countdown.urgent .countdown-time {
+  animation: count-pulse 1s ease-in-out infinite;
+}
+@keyframes count-pulse {
+  50% { transform: scale(1.08); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .countdown.urgent .countdown-time { animation: none; }
+}
+
+/* The TV during a séance: title, ring, bodies, and the souls along the bottom */
+.seance {
+  display: grid;
+  grid-template-rows: auto 1fr auto auto;
+  justify-items: center;
+  align-items: center;
+  gap: 2.4vh;
+  width: 100%;
+  height: 94vh;
+}
+.seance header {
+  display: grid;
+  gap: 0.6vh;
+}
+.seance-title {
+  font-size: 9vh;
+  line-height: 1;
+  color: var(--ink);
+  text-shadow: 0 0 2vw rgba(179, 0, 27, 0.55);
+}
+.seance-sub {
+  font-size: 3.2vh;
+  color: var(--dim);
+}
+.seance-bodies {
+  min-height: 9vh;
+  display: grid;
+  place-items: center;
+}
+.seance-souls {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 1.4vh 3vw;
+  width: min(92vw, 150vh);
+  padding-top: 2.2vh;
+  border-top: 1px solid rgba(233, 220, 192, 0.15);
+  font-size: 2.6vh;
+  font-weight: 700;
+}
+.seance-souls span {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.seance-souls .gone {
+  opacity: 0.3;
+  text-decoration: line-through;
+}
+.seance-souls b {
+  color: #7fdc8a;
+  min-width: 1em;
+}
+
+/* Bodies found, as small tombstones */
+.tombs {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+}
+.tomb {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 18px 8px 12px;
+  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, var(--c) 45%, transparent);
+  border-left: 4px solid var(--c);
+  background: rgba(10, 6, 6, 0.65);
+  text-align: left;
+}
+.tomb-skull { font-size: 1.5rem; line-height: 1; filter: grayscale(0.3); }
+.tomb strong { display: block; font-size: 1.1rem; line-height: 1.1; color: var(--c); }
+.tomb small { display: block; color: var(--dim); font-size: 0.85rem; }
+.tombs.big { gap: 1.6vw; }
+.tombs.big .tomb { padding: 1.2vh 2vw 1.2vh 1.4vw; gap: 1vw; }
+.tombs.big .tomb-skull { font-size: 4.4vh; }
+.tombs.big .tomb strong { font-size: 3.2vh; }
+.tombs.big .tomb small { font-size: 2.2vh; }
+
+/* The role card: face down until you press and hold, then it flips over */
+.tarot {
+  width: min(84vw, 330px, 38vh);
+  aspect-ratio: 2 / 3;
+  perspective: 1200px;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+.tarot.fill {
+  width: auto;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  margin: 0 auto;
+  flex: 1;
+  min-height: 0;
+}
+.tarot-inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+  transition: transform 0.25s ease-in;
+}
+.tarot.held .tarot-inner {
+  transform: rotateY(180deg);
+  transition: transform 0.55s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.tarot-face {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  border-radius: 18px;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 12px;
+  padding: 22px 18px;
+  text-align: center;
+  overflow: hidden;
+}
+.tarot-back {
+  background:
+    radial-gradient(ellipse at 50% 40%, rgba(179, 0, 27, 0.28), transparent 65%),
+    linear-gradient(180deg, #1c0a0d, #0b0405);
+  box-shadow:
+    inset 0 0 0 6px #0b0405,
+    inset 0 0 0 7px rgba(233, 220, 192, 0.45),
+    inset 0 0 0 11px #0b0405,
+    inset 0 0 0 12px rgba(233, 220, 192, 0.2),
+    0 14px 40px rgba(0, 0, 0, 0.7);
+}
+.tarot-sigil {
+  width: 58%;
+  fill: none;
+  stroke: rgba(233, 220, 192, 0.55);
+  stroke-width: 1.2;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 0 6px rgba(255, 31, 61, 0.45));
+  animation: sigil-breathe 3.2s ease-in-out infinite;
+}
+@keyframes sigil-breathe {
+  50% { filter: drop-shadow(0 0 14px rgba(255, 31, 61, 0.75)); }
+}
+.tarot-hint {
+  font-size: 1.9rem;
+  line-height: 1;
+  color: #e9dcc0;
+}
+.tarot-small {
+  font-size: 0.9rem;
+  color: var(--dim);
+}
+.tarot-front {
+  transform: rotateY(180deg);
+  place-content: center stretch;
+}
+.tarot-front.good {
+  background: radial-gradient(ellipse at 50% 25%, rgba(255, 179, 71, 0.22), transparent 60%), linear-gradient(180deg, #1d140a, #0c0805);
+  box-shadow: inset 0 0 0 2px rgba(255, 179, 71, 0.6), 0 0 40px rgba(255, 179, 71, 0.2);
+}
+.tarot-front.evil {
+  background: radial-gradient(ellipse at 50% 25%, rgba(255, 31, 61, 0.35), transparent 60%), linear-gradient(180deg, #2a0409, #0d0203);
+  box-shadow: inset 0 0 0 2px rgba(255, 31, 61, 0.8), 0 0 50px rgba(255, 31, 61, 0.35);
+}
+.tarot-front ul {
+  font-size: 0.92rem;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tarot-inner, .tarot.held .tarot-inner { transition: none; }
+  .tarot-sigil { animation: none; }
+}
+
+/* Phone Actions tab */
+.act-big.btn {
+  min-height: 116px;
+  font-size: 1.7rem;
+  border-radius: 20px;
+}
+.act-info {
+  display: grid;
+  gap: 10px;
+  margin-top: 4px;
+}
+.act-info p {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  font-size: 1rem;
+  line-height: 1.35;
+  color: var(--dim);
+}
+.act-info p span:first-child {
+  font-size: 1.3rem;
+  line-height: 1;
+}
+.act-info strong {
+  color: var(--ink);
+}
+.powers {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 31, 61, 0.45);
+  background: radial-gradient(ellipse at 50% 0%, rgba(179, 0, 27, 0.25), transparent 70%), rgba(10, 2, 4, 0.6);
+}
+.powers h3 {
+  font-size: 1.5rem;
+  line-height: 1;
+  color: var(--blood-bright);
+  text-align: center;
+}
+.btn.power {
+  min-height: 72px;
+  font-size: 1.3rem;
+  border-radius: 14px;
+}
+.btn.power:disabled {
+  opacity: 1;
+  color: var(--dim);
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.03);
+}
+.btn.power small {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+.btn.power:disabled small {
+  color: var(--candle);
+}
+
+/* A ritual card on the phone: where, what, then the big buttons */
+.ritual-where {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  align-self: flex-start;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(255, 179, 71, 0.12);
+  border: 1px solid rgba(255, 179, 71, 0.4);
+  color: var(--candle);
+  font-weight: 800;
+  font-size: 1.15rem;
+}
+.ritual-name {
+  font-size: 1.9rem;
+  font-weight: 800;
+  line-height: 1.1;
+}
+.ritual-how {
+  font-size: 1.35rem;
+  line-height: 1.45;
+}
+
+/* Lobby settings (TV host panel and /admin) */
+.settings {
+  display: grid;
+  gap: 14px;
+}
+.settings-group {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: rgba(10, 4, 6, 0.55);
+}
+.settings-group h3 {
+  font-size: 1rem;
+  color: var(--candle);
+}
+.setting-toggle {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  font-weight: 600;
+}
+.setting-toggle input {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  accent-color: #e0182d;
+}
+.setting-number {
+  display: grid;
+  grid-template-columns: 1fr auto 74px auto;
+  align-items: center;
+  gap: 8px;
+}
+.setting-number span {
+  font-weight: 600;
+}
+.setting-number small {
+  display: block;
+  font-weight: 400;
+  font-size: 0.8rem;
+  color: var(--dim);
+}
+.setting-number .btn {
+  min-height: 42px;
+  min-width: 46px;
+  padding: 4px 0;
+  font-size: 1.3rem;
+}
+.setting-number strong {
+  text-align: center;
+  font-size: 1.05rem;
+}
+
+/* /admin status card */
+.admin-chip {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--line);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+.admin-player {
+  display: grid;
+  grid-template-columns: auto auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: rgba(10, 4, 6, 0.5);
+  border-left: 3px solid var(--c);
+}
+.admin-player strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.admin-player small {
+  display: block;
+  color: var(--dim);
+  font-size: 0.8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.admin-player.gone {
+  opacity: 0.55;
+}
+.admin-stats {
+  display: flex;
+  gap: 8px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--dim);
+}
+
+/* Game over on the phone */
+.over-result {
+  font-size: 3rem;
+  line-height: 1;
+}
+
+/* "Look at the TV": the phone's pointer to anything shown on the big screen */
+.look-tv {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  align-self: center;
+  margin: 0 auto;
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(233, 220, 192, 0.18);
+  background: rgba(233, 220, 192, 0.05);
+  color: var(--dim);
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+/* The phone during talk time: one big button */
+.btn.ready-vote {
+  width: 100%;
+  min-height: 42vh;
+  font-size: 2.4rem;
+  border-radius: 28px;
+}
+.btn.ready-vote.done,
+.btn.ready-vote.done:disabled {
+  opacity: 1;
+  color: #7fdc8a;
+  border-color: #7fdc8a;
+  background: rgba(60, 140, 70, 0.14);
+  box-shadow: 0 0 30px rgba(127, 220, 138, 0.18) inset;
+}
+
+/* The TV while playing: the sigil is the whole screen, with one status line under it. */
+.haunt {
+  display: grid;
+  justify-items: center;
+  gap: 3vh;
+}
+.haunt-sigil {
+  position: relative;
+  width: 76vh;
+  height: 76vh;
+}
+.haunt-core {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  gap: 0.4vh;
+}
+.meeting-status {
+  font-family: var(--flavor-font);
+  font-style: italic;
+  font-size: 3vh;
+  color: var(--dim);
+  min-height: 4vh;
+}
+.meeting-status.ready {
+  font-family: var(--body);
+  font-style: normal;
+  font-weight: 800;
+  color: #d8e6ff;
+  text-shadow: 0 0 1.6vh rgba(160, 190, 255, 0.7);
+  animation: ring-ready 1.6s ease-in-out infinite;
+}
+.meeting-status.hushed-line {
+  color: #c8d6ee;
+}
+.meeting-status b {
+  font-weight: 400;
+  font-style: normal;
+  margin-left: 0.4em;
+  font-size: 4vh;
+}
+@media (prefers-reduced-motion: reduce) {
+  .meeting-status.ready { animation: none; }
+}
+
+/* The meeting ring on the TV sigil pulses once a meeting can be called. */
+.meeting-ring.full {
+  animation: ring-ready 1.6s ease-in-out infinite;
+}
+@keyframes ring-ready {
   50% { opacity: 0.55; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .meeting-ring.full { animation: none; }
+}
+
+/* A player's number (typed on the TV keyboard to call a meeting). */
+.num-badge {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.9em;
+  height: 1.9em;
+  padding: 0 0.4em;
+  border-radius: 999px;
+  border: 2px solid var(--candle);
+  color: var(--candle);
+  font-weight: 800;
+  line-height: 1;
+}
+
+/* A padlock over a meeting button while the Hush is on. */
+.lockable {
+  position: relative;
+  display: grid;
+}
+.lockable .lock {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 2.6rem;
+  pointer-events: none;
+  filter: drop-shadow(0 0 8px #000);
+}
+.lockable.locked > button {
+  opacity: 0.35;
 }
 
 .screen {
@@ -337,7 +882,16 @@ button:disabled {
   justify-content: center;
   text-align: center;
   padding: 24px;
-  background: rgba(10, 0, 2, 0.94);
+  /* fully solid: even a sliver of see-through shows bright buttons behind */
+  background: radial-gradient(ellipse at 50% 15%, #22070b, #080204 70%);
+}
+/* Pop-ups appear quickly so a tap feels instant, and never show the screen behind. */
+.overlay.fade-in {
+  animation: overlay-in 0.25s ease both;
+}
+@keyframes overlay-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 /* ─── Creepy details ────────────────────────────────────── */
@@ -663,28 +1217,6 @@ button:disabled {
   gap: 10px;
 }
 
-.chips {
-  display: grid;
-  gap: 8px;
-}
-.chip {
-  min-height: 44px;
-  border-radius: 12px;
-  border: 1px solid var(--line);
-  background: rgba(0, 0, 0, 0.5);
-  color: var(--ink);
-  font-weight: 800;
-  font-size: 1.15rem;
-}
-.chip.on {
-  border: 2px solid var(--candle);
-  box-shadow: 0 0 12px rgba(255, 179, 71, 0.35);
-}
-.chip.done {
-  color: #7fdc8a;
-  background: rgba(60, 140, 70, 0.15);
-}
-
 .task-card {
   flex: 1;
   display: flex;
@@ -694,34 +1226,45 @@ button:disabled {
   touch-action: pan-y;
 }
 
-.actions {
-  flex: 1;
+/* The shared ritual pool on the phone */
+.ritual-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
-.action-tile {
-  flex: 1;
-  max-height: 120px;
-  min-height: 64px;
-  display: flex;
-  align-items: center;
-  gap: 14px;
+.ritual-row {
+  display: grid;
+  gap: 2px;
   padding: 12px 16px;
-  font-weight: 800;
-  font-size: 1.2rem;
   text-align: left;
+  color: var(--ink);
+  font-size: 1.1rem;
 }
-.action-tile .icon {
-  font-size: 2.2rem;
-  line-height: 1;
-  width: 2.6rem;
-  text-align: center;
+button.ritual-row {
+  border-color: var(--candle);
+  cursor: pointer;
 }
-.action-tile small {
-  display: block;
-  font-weight: 600;
-  font-size: 0.9rem;
+.ritual-row.unlocked {
+  border-color: #7fdc8a;
+  box-shadow: 0 0 14px rgba(127, 220, 138, 0.25);
+}
+.unlocked-tag {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(127, 220, 138, 0.15);
+  color: #7fdc8a;
+  font-size: 0.8rem;
+  font-weight: 800;
+  vertical-align: middle;
+}
+.ritual-row.off {
+  opacity: 0.55;
+  font-size: 0.95rem;
+  border-color: var(--line);
+}
+.ritual-row.off span {
   color: var(--dim);
 }
 
@@ -781,7 +1324,6 @@ button:disabled {
 /* ─── Blood Moon card picker (phone) ────────────────────── */
 
 .moon-slot {
-  flex: 1;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -815,120 +1357,270 @@ button:disabled {
   opacity: 0.35;
 }
 
-/* ─── Spirit Board (desktop station) ────────────────────── */
+/* ─── Spirit Board: a talking board seen from above ───────── */
 
-.spirit-tally {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 0.6em;
-  margin-top: 1.2vh;
-  padding: 0.35em 1.1em;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: rgba(10, 3, 5, 0.6);
-  font-size: clamp(0.9rem, 1.4vw, 1.4rem);
-  color: var(--dim);
-}
-.spirit-tally b {
-  font-size: 1.25em;
-}
-/* Column count comes from JS (--cols) so every soul fits on one screen. */
-.spirit-grid {
-  display: grid;
-  grid-template-columns: repeat(var(--cols, 4), minmax(0, 1fr));
-  gap: clamp(10px, 1.6vw, 28px);
-  width: min(100%, calc(var(--cols, 4) * 300px));
-  min-height: 0;
-}
-.spirit {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: clamp(6px, 1.2vh, 14px);
-  min-width: 0;
-  padding: clamp(14px, 2.4vh, 28px) clamp(10px, 1.2vw, 20px) clamp(12px, 2vh, 22px);
-  border-color: color-mix(in srgb, var(--c) 30%, transparent);
-  background:
-    radial-gradient(ellipse at 50% 28%, color-mix(in srgb, var(--c) 16%, transparent), transparent 65%),
-    var(--panel);
+.sb-room {
+  width: 100vw;
+  height: 100vh;
   overflow: hidden;
-  transition: border-color 0.6s, background 0.6s, filter 0.6s;
-}
-/* room for the soul's aura, which spills well past its box */
-.spirit .orb {
   display: grid;
   place-items: center;
-  width: var(--orb);
-  height: var(--orb);
-  margin: calc(var(--orb) * 0.2) 0 calc(var(--orb) * 0.12);
+  padding: 3vh 3vw;
 }
-.spirit-name {
+.sb-board {
+  --bone: #e9dcc0;
+  --wood: #24130b;
+  position: relative;
+  width: min(94vw, 168vh);
+  aspect-ratio: 16 / 9;
+  border-radius: 4.5% / 8%;
+  color: var(--bone);
+  /* scorched walnut: a warm centre, burnt edges, faint grain */
+  background:
+    radial-gradient(ellipse at 50% 42%, rgba(120, 60, 24, 0.35), transparent 62%),
+    repeating-linear-gradient(92deg, rgba(0, 0, 0, 0.12) 0 2px, transparent 2px 9px),
+    repeating-linear-gradient(88deg, rgba(255, 220, 170, 0.025) 0 1px, transparent 1px 23px),
+    linear-gradient(180deg, #2c170d, var(--wood) 55%, #160a05);
+  box-shadow:
+    inset 0 0 0 0.5vw #160a05,
+    inset 0 0 0 calc(0.5vw + 1px) rgba(233, 220, 192, 0.35),
+    inset 0 0 0 calc(0.9vw + 1px) #160a05,
+    inset 0 0 0 calc(0.9vw + 2px) rgba(233, 220, 192, 0.18),
+    inset 0 0 9vw rgba(0, 0, 0, 0.85),
+    0 3vh 9vh rgba(0, 0, 0, 0.8);
+  transition: filter 1.5s;
+}
+.sb-board.sb-dark {
+  filter: brightness(0.35) saturate(0.4);
+}
+.sb-board.sb-dark .sb-hint {
+  filter: brightness(2.6);
+}
+
+.sb-title {
+  position: absolute;
+  top: 6%;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 4.2vw;
+  line-height: 1;
+  color: var(--bone);
+  letter-spacing: 0.04em;
+  text-shadow: 0 0 1.4vw rgba(179, 0, 27, 0.55);
+}
+.sb-hint {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  gap: 2vh;
+  text-align: center;
+  font-size: 2.4vw;
+}
+.sb-verdict {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 72%;
+  text-align: center;
+  font-size: 3.6vw;
+  color: var(--candle);
+  text-shadow: 0 0 2vw rgba(255, 179, 71, 0.6);
+}
+
+.sb-corner {
+  position: absolute;
+  top: 6%;
+  display: grid;
+  justify-items: center;
+  gap: 0.4vh;
+  font-family: var(--flavor-font);
+  font-style: italic;
+  font-size: 1.5vw;
+  color: rgba(233, 220, 192, 0.75);
+}
+.sb-corner.left { left: 6%; }
+.sb-corner.right { right: 6%; }
+.sb-corner b {
+  font-family: var(--creep);
+  font-style: normal;
+  font-weight: 400;
+  font-size: 2.6vw;
+  color: var(--bone);
+  margin-right: 0.3em;
+}
+.sb-glyph {
+  font-size: 3.4vw;
+  line-height: 1;
+  color: rgba(233, 220, 192, 0.55);
+}
+
+/* Candles: one per ritual */
+.sb-candle {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  width: 11vw;
+  display: grid;
+  justify-items: center;
+  text-align: center;
+  gap: 0.2vh;
+}
+.sb-wax {
+  width: 3.2vw;
+  height: auto;
+  overflow: visible;
+}
+.sb-body {
+  fill: #d8c9a8;
+  stroke: rgba(0, 0, 0, 0.35);
+  stroke-width: 0.8;
+}
+.sb-candle.cold .sb-body,
+.sb-candle.locked .sb-body,
+.sb-candle.opened .sb-body {
+  fill: #8e8068;
+}
+.sb-flame {
+  fill: var(--flame);
+  filter: drop-shadow(0 0 4px var(--flame)) drop-shadow(0 0 10px var(--flame));
+  transform-origin: 20px 24px;
+  animation: sb-flicker 1.3s ease-in-out infinite alternate;
+}
+.sb-candle.held .sb-flame {
+  transform: scale(0.7);
+  opacity: 0.85;
+  animation-duration: 0.7s;
+}
+.sb-halo {
+  fill: rgba(255, 179, 71, 0.18);
+  filter: blur(4px);
+}
+.sb-ember {
+  fill: #7fdc8a;
+  filter: drop-shadow(0 0 4px #7fdc8a);
+  animation: sb-ember 1.6s ease-in-out infinite;
+}
+.sb-lock { stroke: #e9dcc0; stroke-width: 1.8; stroke-linejoin: round; }
+.sb-lock rect { fill: rgba(22, 10, 5, 0.85); }
+.sb-lock circle { fill: #e9dcc0; stroke: none; }
+@keyframes sb-flicker {
+  0% { transform: scale(1, 1) skewX(0deg); }
+  40% { transform: scale(0.94, 1.06) skewX(2deg); }
+  100% { transform: scale(1.04, 0.95) skewX(-2deg); }
+}
+.sb-candle.held .sb-flame { animation-name: sb-flicker-small; }
+@keyframes sb-flicker-small {
+  0% { transform: scale(0.7, 0.7); }
+  100% { transform: scale(0.64, 0.78) skewX(3deg); }
+}
+@keyframes sb-ember {
+  50% { opacity: 0.35; }
+}
+.sb-name {
+  font-family: var(--flavor-font);
+  font-style: italic;
+  font-size: 1.25vw;
+  line-height: 1.1;
+  color: var(--bone);
+}
+.sb-candle.cold .sb-name,
+.sb-candle.locked .sb-name {
+  color: rgba(233, 220, 192, 0.6);
+}
+.sb-candle.lit .sb-name {
+  color: #ffe2a8;
+  text-shadow: 0 0 0.8vw rgba(255, 179, 71, 0.7);
+}
+.sb-note {
+  font-size: 0.95vw;
+  font-weight: 700;
+  color: rgba(233, 220, 192, 0.55);
+}
+.sb-candle.held .sb-note { color: var(--flame); }
+.sb-candle.opened .sb-note { color: #7fdc8a; }
+.sb-candle.lit .sb-note { color: var(--candle); }
+
+/* The planchette: the board's one moving piece */
+.sb-planchette {
+  position: absolute;
+  width: 7.4vw;
+  /* the window's centre (60,92 of 120x140) sits on the spot */
+  transform: translate(-50%, -65.7%) rotate(-7deg);
+  transition: left 2.4s cubic-bezier(0.45, 0, 0.2, 1), top 2.4s cubic-bezier(0.45, 0, 0.2, 1);
+  filter: drop-shadow(0 1.2vh 1.4vh rgba(0, 0, 0, 0.75));
+  pointer-events: none;
+}
+.sb-planchette svg { width: 100%; height: auto; display: block; }
+.sb-heart {
+  fill: rgba(233, 220, 192, 0.16);
+  stroke: var(--bone);
+  stroke-width: 2.5;
+}
+.sb-window {
+  fill: none;
+  stroke: var(--bone);
+  stroke-width: 2;
+}
+.sb-whisper {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 67.5%;
+  text-align: center;
+  font-size: 1.9vw;
+  color: rgba(233, 220, 192, 0.85);
+}
+
+/* The souls along the bottom edge, where "good bye" would be */
+.sb-circle {
+  position: absolute;
+  left: 7%;
+  right: 7%;
+  bottom: 6%;
   display: flex;
-  align-items: center;
   justify-content: center;
-  gap: 0.35em;
-  max-width: 100%;
-  font-size: clamp(1rem, 1.7vw, 1.9rem);
-  font-weight: 800;
-  line-height: 1.15;
+  gap: 1.6vw;
+  padding-top: 1.6vh;
+  border-top: 1px solid rgba(233, 220, 192, 0.2);
 }
-.spirit-name span {
+.sb-seat {
+  display: grid;
+  justify-items: center;
+  gap: 0.2vh;
+  min-width: 0;
+  flex: 0 1 8vw;
+  text-align: center;
+}
+.sb-seat strong {
+  font-size: 1.15vw;
+  color: var(--c);
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.spirit-name .bot {
-  flex: none;
-  font-size: 0.7em;
-  opacity: 0.7;
-}
-.spirit-status {
-  font-size: clamp(0.75rem, 1.1vw, 1.1rem);
+.sb-lit {
+  font-size: 0.95vw;
   font-weight: 800;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: #7fdc8a;
+  min-height: 1.3vw;
+  color: var(--candle);
 }
-.spirit.gone {
-  border-color: rgba(255, 31, 61, 0.55);
-  background:
-    radial-gradient(ellipse at 50% 28%, rgba(255, 31, 61, 0.12), transparent 65%),
-    rgba(30, 0, 5, 0.8);
-  animation: spirit-depart 1.2s ease-out;
+.sb-heading {
+  font-family: var(--flavor-font);
+  font-style: italic;
+  font-size: 1vw;
+  color: rgba(233, 220, 192, 0.7);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.spirit.gone .spirit-name {
-  color: var(--dim);
-  text-decoration: line-through;
-  text-decoration-color: rgba(255, 31, 61, 0.7);
-  text-decoration-thickness: 2px;
+.sb-seat.gone {
+  opacity: 0.4;
 }
-.spirit.gone .spirit-status {
-  color: var(--blood-bright);
-  text-shadow: 0 0 10px rgba(255, 31, 61, 0.6);
-}
-@keyframes spirit-depart {
-  0% { background: rgba(255, 31, 61, 0.55); filter: brightness(1.8); }
-  100% { filter: none; }
-}
-.ecg {
-  width: 100%;
-  height: clamp(22px, 4.5vh, 48px);
-}
-.ecg.beat path {
-  stroke-dasharray: 160;
-  animation: ecg 1.6s linear infinite;
-  filter: drop-shadow(0 0 3px #7fdc8a);
-}
-.ecg.flat path {
-  filter: drop-shadow(0 0 3px #ff1f3d);
-}
-@keyframes ecg {
-  from { stroke-dashoffset: 160; }
-  to { stroke-dashoffset: -160; }
-}
+
 @media (prefers-reduced-motion: reduce) {
-  .ecg.beat path { animation: none; }
-  .spirit.gone { animation: none; }
+  .sb-flame, .sb-ember { animation: none; }
+  .sb-planchette { transition: none; }
 }

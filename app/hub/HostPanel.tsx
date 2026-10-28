@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { post, type View } from "@/lib/client";
 import { Soul } from "@/components/shared";
-import type { Settings } from "@/lib/game";
+import { SettingsEditor } from "@/components/SettingsEditor";
 
 export function HostPanel({ s, onState, onClose }: { s: View; onState: (v: View) => void; onClose: () => void }) {
   const [error, setError] = useState<string | null>(null);
@@ -168,73 +168,13 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-type NumberSetting = { key: keyof Settings; label: string; min: number; max: number; step: number; zero?: string };
-
-const GAME_NUMBERS: NumberSetting[] = [
-  { key: "traitors", label: "Possessed", min: 0, max: 3, step: 1, zero: "Auto" },
-  { key: "tasksPerPlayer", label: "Tasks per player", min: 1, max: 10, step: 1 },
-  { key: "killCooldown", label: "Kill cooldown (s)", min: 10, max: 180, step: 5 },
-  { key: "discussion", label: "Discussion (s)", min: 15, max: 300, step: 15 },
-  { key: "voting", label: "Voting (s)", min: 15, max: 180, step: 15 },
-  { key: "bells", label: "Emergency meetings", min: 0, max: 10, step: 1 },
-  { key: "bellCooldown", label: "Bell cooldown (s)", min: 30, max: 300, step: 30 },
-];
-
-const MOON_NUMBERS: NumberSetting[] = [
-  { key: "bloodMoonDuration", label: "Time to stop it (s)", min: 20, max: 180, step: 10 },
-  { key: "bloodMoonCooldown", label: "Cooldown between (s)", min: 30, max: 600, step: 30 },
-  { key: "bloodMoonGrace", label: "Wait at game start (s)", min: 0, max: 600, step: 30 },
-];
-
-function Stepper({ n, s, set }: { n: NumberSetting; s: View; set: (patch: Partial<Settings>) => void }) {
-  const v = s.settings[n.key] as number;
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-      <span style={{ flex: 1 }}>{n.label}</span>
-      <button className="btn ghost" style={{ padding: "4px 12px", minHeight: 40 }} disabled={v <= n.min} onClick={() => set({ [n.key]: Math.max(n.min, v - n.step) })}>
-        −
-      </button>
-      <strong style={{ minWidth: 60, textAlign: "center" }}>{v === 0 && n.zero ? `${n.zero} (${s.traitorCount})` : v}</strong>
-      <button className="btn ghost" style={{ padding: "4px 12px", minHeight: 40 }} disabled={v >= n.max} onClick={() => set({ [n.key]: Math.min(n.max, v + n.step) })}>
-        +
-      </button>
-    </div>
-  );
-}
-
-function Toggle({ checked, onChange, children }: { checked: boolean; onChange: (v: boolean) => void; children: React.ReactNode }) {
-  return (
-    <label style={{ display: "flex", gap: 10, alignItems: "center" }}>
-      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
-      {children}
-    </label>
-  );
-}
-
 function SettingsForm({ s, call }: { s: View; call: Call }) {
-  const set = (patch: Partial<Settings>) => call({ type: "settings", settings: patch });
   return (
-    <>
-      <Section title="Settings">
-        {GAME_NUMBERS.map((n) => (
-          <Stepper key={n.key} n={n} s={s} set={set} />
-        ))}
-        <Toggle checked={s.settings.revealOnEject} onChange={(v) => set({ revealOnEject: v })}>
-          Reveal role when voted out
-        </Toggle>
-        <Toggle checked={s.settings.scares} onChange={(v) => set({ scares: v })}>
-          Jump scares on the TV (turn off for little kids)
-        </Toggle>
-      </Section>
-      <Section title="🌕 Blood Moon">
-        <Toggle checked={s.settings.bloodMoon} onChange={(v) => set({ bloodMoon: v })}>
-          Possessed can summon the Blood Moon
-        </Toggle>
-        {s.settings.bloodMoon && MOON_NUMBERS.map((n) => <Stepper key={n.key} n={n} s={s} set={set} />)}
-        <p style={{ color: "var(--dim)", fontSize: ".9rem" }}>
-          Cards and locations live in <code>config/bloodmoon.ts</code>. See them on the setup list.
-        </p>
-      </Section>
-    </>
+    <Section title="Settings">
+      <SettingsEditor settings={s.settings} autoTraitors={s.traitorCount} onChange={(patch) => call({ type: "settings", settings: patch })} />
+      <p style={{ color: "var(--dim)", fontSize: ".9rem" }}>
+        Blood Moon cards and locations live in <code>config/bloodmoon.ts</code>. See them on the setup list.
+      </p>
+    </Section>
   );
 }

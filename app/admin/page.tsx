@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { fmt, useMounted } from "@/lib/client";
-import { Atmos } from "@/components/shared";
+import { colorHex, fmt, useMounted } from "@/lib/client";
+import { Atmos, Soul } from "@/components/shared";
+import { SettingsEditor } from "@/components/SettingsEditor";
 import type { Settings } from "@/lib/game";
 
 type Admin = {
@@ -13,7 +14,12 @@ type Admin = {
   progress: { done: number; total: number };
   settings: Settings;
   ready: number;
+  traitorCount: number;
   votes: number;
+  readyToVote: number;
+  living: number;
+  meetingsIn: number;
+  hushIn: number;
   bloodMoon: {
     active: boolean;
     endsIn: number;
@@ -21,11 +27,23 @@ type Admin = {
     cards: { location: string; card: string }[];
     sealedBy: (string | null)[];
   };
-  players: { name: string; bot: boolean; role: string | null; alive: boolean; tasks: string }[];
+  players: {
+    num: number;
+    name: string;
+    color: string;
+    bot: boolean;
+    role: string | null;
+    alive: boolean;
+    ejected: boolean;
+    foundBy: string | null;
+    meetingsLeft: number;
+    rituals: number;
+    doing: string | null;
+  }[];
 };
 
-// Admin controls: run the game from your phone (start, skip timers, Blood Moon)
-// and test it alone with bots. Roles stay hidden until you ask, so you can play too.
+// Admin controls: run the game from your phone and test it alone with bots.
+// Roles stay hidden until you ask, so you can play too.
 export default function AdminPage() {
   const mounted = useMounted();
   return mounted ? <Controls /> : <Atmos />;
@@ -37,6 +55,13 @@ const PHASES: Record<string, string> = {
   playing: "🕯️ Playing",
   meeting: "🔔 Meeting",
   over: "🏁 Game over",
+};
+
+const STAGES: Record<string, string> = {
+  summons: "Gathering at the TV",
+  discussion: "Talk time",
+  voting: "Voting",
+  verdict: "Verdict",
 };
 
 function Controls() {
@@ -63,7 +88,8 @@ function Controls() {
       body: JSON.stringify({ type: "settings", settings: patch }),
     });
     const data = await res.json();
-    if (!res.ok) setMsg(`⚠️ ${data.error}`);
+    if (!res.ok) return setMsg(`⚠️ ${data.error}`);
+    setState((s) => (s ? { ...s, settings: data.settings } : s));
   };
 
   // Refresh every 2 seconds.
@@ -85,7 +111,7 @@ function Controls() {
     <button
       key={label}
       className={`btn ${primary ? "primary" : ""}`}
-      style={{ fontSize: "1rem", minHeight: 50, padding: "10px 12px" }}
+      style={{ fontSize: "1rem", minHeight: 52, padding: "10px 12px" }}
       disabled={disabled}
       onClick={() => call(params)}
     >
@@ -98,58 +124,32 @@ function Controls() {
   const human = s?.players.find((p) => !p.bot)?.name ?? "";
   const bm = s?.bloodMoon;
   const timed = phase === "reveal" || phase === "meeting";
+  const live = phase === "playing" || phase === "meeting";
 
   return (
     <>
       <Atmos />
-      <main className="screen phone" style={{ display: "grid", gap: 16, alignContent: "start" }}>
+      <main className="screen phone" style={{ display: "grid", gap: 18, alignContent: "start" }}>
         <h1 className="creep blood" style={{ fontSize: "2.4rem" }}>Admin Controls</h1>
 
-        {s && (
-          <section className="panel" style={{ padding: 14, display: "grid", gap: 6, fontSize: ".95rem" }}>
-            <strong style={{ fontSize: "1.15rem" }}>
-              {PHASES[s.phase] ?? s.phase}
-              {s.stage ? ` → ${s.stage}` : ""}
-              {s.phase === "meeting" && s.endsIn > 0 ? ` (${s.endsIn}s)` : ""}
-              {s.phase === "reveal" ? ` (${s.ready}/${s.players.length} ready)` : ""}
-            </strong>
-            {s.winner && <span className="blood">Winner: {s.winner.side === "traitor" ? "Possessed" : "Mortals"} ({s.winner.reason})</span>}
-            <span>
-              Tasks: {s.progress.done}/{s.progress.total} · Players: {s.players.length}
-              {s.stage === "voting" ? ` · Votes: ${s.votes}` : ""}
-            </span>
-            <button
-              onClick={() => setShowRoles(!showRoles)}
-              style={{ background: "none", border: "none", color: "var(--candle)", textAlign: "left", padding: "4px 0", fontWeight: 800 }}
-            >
-              {showRoles ? "🙈 Hide roles" : "👁 Show roles (don't let anyone see!)"}
-            </button>
-            {s.players.map((p) => (
-              <span key={p.name} style={{ opacity: p.alive ? 1 : 0.5 }}>
-                {p.alive ? "" : "☠ "}
-                {p.name}
-                {showRoles && p.role ? ` — ${p.role === "traitor" ? "😈 Possessed" : "🕯️ Mortal"}` : ""} · {p.tasks}
-              </span>
-            ))}
-          </section>
-        )}
+        {s && <Status s={s} showRoles={showRoles} onToggleRoles={() => setShowRoles(!showRoles)} />}
         {msg && <p style={{ fontSize: ".9rem", wordBreak: "break-word" }}>{msg}</p>}
 
-        <Group title="Game">
+        <Group title="▶ Game">
           {btn("▶ Start game", { do: "start" }, true, phase !== "lobby")}
           {btn("⏭ Skip timer", { do: "skip" }, true, !timed)}
-          {btn("🔔 Force meeting", { do: "meeting" }, false, phase !== "playing")}
-          {btn("🔁 Back to lobby", { do: "lobby" }, false, phase === "lobby")}
           {btn("Start: I'm Possessed", { do: "start", role: "traitor" }, false, phase !== "lobby")}
           {btn("Start: I'm Mortal", { do: "start", role: "member" }, false, phase !== "lobby")}
           {btn("Everyone ready", { do: "ready" }, false, phase !== "reveal")}
+          {btn("🔔 Force meeting", { do: "meeting" }, false, phase !== "playing")}
+          {btn("🔁 Back to lobby", { do: "lobby" }, false, phase === "lobby")}
           {btn("Reset everything", { do: "reset" })}
         </Group>
 
-        <Group title="🌕 Blood Moon">
-          {bm?.active ? (
+        <Group title="😈 Possessed powers">
+          {bm?.active && (
             <div className="panel" style={{ gridColumn: "1 / -1", padding: 12, display: "grid", gap: 4, borderColor: "var(--blood-bright)" }}>
-              <strong className="blood">Rising! {bm.endsIn}s left</strong>
+              <strong className="blood">Blood Moon rising! {bm.endsIn}s left</strong>
               {bm.cards.map((c, i) => (
                 <span key={c.location}>
                   📍 {c.location}: <strong style={{ color: "var(--candle)" }}>{c.card}</strong>
@@ -157,20 +157,19 @@ function Controls() {
                 </span>
               ))}
             </div>
-          ) : (
-            phase === "playing" &&
-            s?.settings.bloodMoon && (
-              <p style={{ gridColumn: "1 / -1", color: "var(--dim)" }}>
-                {bm && bm.readyIn > 0 ? `The Possessed can summon it in ${fmt(bm.readyIn)}.` : "The Possessed can summon it now."}
-              </p>
-            )
           )}
-          {btn("🌕 Summon now", { do: "moon" }, true, phase !== "playing" || !!bm?.active)}
-          {btn("✋ Cancel it", { do: "cancelMoon" }, false, !bm?.active)}
-          {s && phase === "lobby" && <MoonSettings s={s.settings} set={setSettings} />}
-          {s && phase !== "lobby" && (
-            <p style={{ gridColumn: "1 / -1", color: "var(--dim)", fontSize: ".85rem" }}>Blood Moon settings can be changed in the lobby.</p>
+          {btn("🌕 Blood Moon now", { do: "moon" }, true, phase !== "playing" || !!bm?.active)}
+          {btn("✋ Cancel Blood Moon", { do: "cancelMoon" }, false, !bm?.active)}
+          {btn("🤫 Hush now", { do: "hush" }, false, phase !== "playing" || !!s?.hushIn)}
+          {btn("🔊 End the Hush", { do: "unhush" }, false, !s?.hushIn)}
+          {btn("⏩ Fill meeting ring + ready powers", { do: "cooldowns" }, false, phase !== "playing")}
+        </Group>
+
+        <Group title="☠ Kill & revive">
+          {s?.players.map((p) =>
+            btn(p.alive ? `☠ Kill ${p.name}` : `✚ Revive ${p.name}`, { do: p.alive ? "kill" : "revive", name: p.name }, false, !live),
           )}
+          <Note>Fix mistakes during a game. A killed player counts as found.</Note>
         </Group>
 
         <Group title="🤖 Bots (testing)">
@@ -178,58 +177,108 @@ function Controls() {
           {btn("Add 1 bot", { do: "bots", n: 1 }, false, phase !== "lobby")}
           {btn("Remove bots", { do: "clearbots" })}
           {btn("Fast timers", { do: "fast" }, false, phase !== "lobby")}
-          {btn("Bots do 50% tasks", { do: "bottasks", pct: 50 }, false, phase !== "playing")}
-          {btn("Bots do all tasks", { do: "bottasks", pct: 100 }, false, phase !== "playing")}
-          {btn("Kill a bot", { do: "botkill" }, false, phase !== "playing")}
-          {btn("Kill me", { do: "botkill", name: human }, false, phase !== "playing" || !human)}
-          {btn("Bot reports body", { do: "botreport" }, false, phase !== "playing")}
-          {btn("Ring the bell", { do: "bell" }, false, phase !== "playing")}
+          {btn("Bots do 50% rituals", { do: "bottasks", pct: 50 }, false, phase !== "playing")}
+          {btn("Bots do all rituals", { do: "bottasks", pct: 100 }, false, phase !== "playing")}
+          {btn("Bot finds a body", { do: "botkill" }, false, phase !== "playing")}
+          {btn("Bot finds my body", { do: "botkill", name: human }, false, phase !== "playing" || !human)}
+          {btn("Bot reports + meeting", { do: "botreport" }, false, phase !== "playing")}
           {btn("Bot stops Blood Moon", { do: "botseal" }, false, !bm?.active)}
-          {btn("Clear cooldowns", { do: "cooldowns" }, false, phase !== "playing")}
           {btn("Bots vote skip", { do: "botvote", target: "skip" }, false, s?.stage !== "voting")}
           {btn("Bots vote random", { do: "botvote", target: "random" }, false, s?.stage !== "voting")}
           {btn("Bots vote me", { do: "botvote", target: human }, false, s?.stage !== "voting" || !human)}
         </Group>
 
+        <section style={{ display: "grid", gap: 8 }}>
+          <h2 className="creep" style={{ fontSize: "1.5rem", color: "var(--candle)" }}>⚙️ Settings</h2>
+          {s && phase === "lobby" ? (
+            <SettingsEditor settings={s.settings} autoTraitors={s.traitorCount} onChange={setSettings} />
+          ) : (
+            <p style={{ color: "var(--dim)" }}>Settings can be changed in the lobby, between games.</p>
+          )}
+        </section>
+
         <p style={{ color: "var(--dim)", fontSize: ".85rem" }}>
           On the TV: <strong>Space</strong> starts the game (and plays again), <strong>S</strong> skips a timer, <strong>H</strong> opens host
-          controls. Every button here is also a URL, e.g. <code>/api/admin?do=skip</code>.
+          controls, and any other key starts an emergency meeting (then a player number and Enter). Every button here is also a URL, e.g.{" "}
+          <code>/api/admin?do=skip</code>.
         </p>
       </main>
     </>
   );
 }
 
-const MOON_NUMBERS: { key: keyof Settings; label: string; min: number; max: number; step: number }[] = [
-  { key: "bloodMoonDuration", label: "Time to stop it (s)", min: 20, max: 180, step: 10 },
-  { key: "bloodMoonCooldown", label: "Cooldown between (s)", min: 30, max: 600, step: 30 },
-  { key: "bloodMoonGrace", label: "Wait at game start (s)", min: 0, max: 600, step: 30 },
-];
+// What's happening right now, at a glance.
+function Status({ s, showRoles, onToggleRoles }: { s: Admin; showRoles: boolean; onToggleRoles: () => void }) {
+  const playing = s.phase === "playing";
+  const chips: [string, string][] = [];
+  if (s.phase !== "lobby") chips.push(["📜", `Rituals ${s.progress.done}/${s.progress.total}`]);
+  if (playing) chips.push(["🔔", s.meetingsIn > 0 ? `Meeting ring fills in ${fmt(s.meetingsIn)}` : "Meeting ring is full"]);
+  if (playing && s.hushIn > 0) chips.push(["🤫", `The Hush: ${s.hushIn}s left`]);
+  if (playing && (s.settings.bloodMoon || s.settings.hush) && !s.bloodMoon.active && s.hushIn === 0)
+    chips.push(["😈", s.bloodMoon.readyIn > 0 ? `Powers ready in ${fmt(s.bloodMoon.readyIn)}` : "Powers are ready"]);
+  if (s.bloodMoon.active) chips.push(["🌕", `Blood Moon: ${s.bloodMoon.endsIn}s left`]);
+  if (s.stage === "discussion") chips.push(["🗳️", `${s.readyToVote}/${s.living} ready to vote`]);
+  if (s.stage === "voting") chips.push(["🗳️", `${s.votes}/${s.living} votes`]);
 
-function MoonSettings({ s, set }: { s: Settings; set: (patch: Partial<Settings>) => void }) {
   return (
-    <div style={{ gridColumn: "1 / -1", display: "grid", gap: 10 }}>
-      <label style={{ display: "flex", gap: 10, alignItems: "center", fontWeight: 600 }}>
-        <input type="checkbox" checked={s.bloodMoon} onChange={(e) => set({ bloodMoon: e.target.checked })} />
-        Possessed can summon the Blood Moon
-      </label>
-      {s.bloodMoon &&
-        MOON_NUMBERS.map((n) => {
-          const v = s[n.key] as number;
-          return (
-            <div key={n.key} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <span style={{ flex: 1 }}>{n.label}</span>
-              <button className="btn ghost" style={{ padding: "4px 14px", minHeight: 42 }} disabled={v <= n.min} onClick={() => set({ [n.key]: Math.max(n.min, v - n.step) })}>
-                −
-              </button>
-              <strong style={{ minWidth: 44, textAlign: "center" }}>{v}</strong>
-              <button className="btn ghost" style={{ padding: "4px 14px", minHeight: 42 }} disabled={v >= n.max} onClick={() => set({ [n.key]: Math.min(n.max, v + n.step) })}>
-                +
-              </button>
-            </div>
-          );
-        })}
-    </div>
+    <section className="panel" style={{ padding: 14, display: "grid", gap: 10 }}>
+      <strong style={{ fontSize: "1.2rem" }}>
+        {PHASES[s.phase] ?? s.phase}
+        {s.stage ? ` · ${STAGES[s.stage] ?? s.stage}` : ""}
+        {s.phase === "meeting" && s.endsIn > 0 ? ` (${s.endsIn}s)` : ""}
+        {s.phase === "reveal" ? ` (${s.ready}/${s.players.length} ready)` : ""}
+      </strong>
+      {s.winner && (
+        <span className="blood" style={{ fontWeight: 800 }}>
+          Winner: {s.winner.side === "traitor" ? "the Possessed" : "the Mortals"} ({s.winner.reason})
+        </span>
+      )}
+      {chips.length > 0 && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {chips.map(([icon, text]) => (
+            <span key={text} className="admin-chip">
+              {icon} {text}
+            </span>
+          ))}
+        </div>
+      )}
+
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <span style={{ fontWeight: 800 }}>Players ({s.players.length})</span>
+        <button onClick={onToggleRoles} style={{ background: "none", border: "none", color: "var(--candle)", padding: "4px 0", fontWeight: 800 }}>
+          {showRoles ? "🙈 Hide roles" : "👁 Show roles"}
+        </button>
+      </div>
+      <div style={{ display: "grid", gap: 6 }}>
+        {s.players.map((p) => (
+          <div key={p.name} className={`admin-player ${p.alive ? "" : "gone"}`} style={{ "--c": colorHex(p.color) } as React.CSSProperties}>
+            <span className="num-badge" style={{ fontSize: ".85rem" }}>{p.num}</span>
+            <Soul color={p.color} size={18} dead={!p.alive} />
+            <span style={{ minWidth: 0 }}>
+              <strong>
+                {p.name}
+                {showRoles && p.role ? (p.role === "traitor" ? " 😈" : " 🕯️") : ""}
+              </strong>
+              <small>
+                {!p.alive
+                  ? p.ejected
+                    ? "Voted out"
+                    : `Ghost · found by ${p.foundBy ?? "the host"}`
+                  : p.doing
+                    ? `✋ ${p.doing}`
+                    : s.phase === "lobby"
+                      ? "In the lobby"
+                      : "Wandering"}
+              </small>
+            </span>
+            <span className="admin-stats">
+              {s.phase !== "lobby" && <span title="Rituals done">✓{p.rituals}</span>}
+              {s.phase !== "lobby" && <span title="Emergency meetings left">🔔{p.meetingsLeft}</span>}
+            </span>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -240,4 +289,8 @@ function Group({ title, children }: { title: string; children: React.ReactNode }
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>{children}</div>
     </section>
   );
+}
+
+function Note({ children }: { children: React.ReactNode }) {
+  return <p style={{ gridColumn: "1 / -1", color: "var(--dim)", fontSize: ".85rem" }}>{children}</p>;
 }

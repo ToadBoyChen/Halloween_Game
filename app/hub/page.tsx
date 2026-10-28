@@ -4,9 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import QRCode from "qrcode";
 import { haunt } from "@/lib/audio";
 import { useEventSounds } from "@/lib/sounds";
-import { dur, fmt, post, secondsLeft, useGame, useMounted, useOnChange, useTicker, type View } from "@/lib/client";
-import { Atmos, deadText, Soul, SoulList, summonsText, verdictText, winText } from "@/components/shared";
+import { post, secondsLeft, useGame, useMounted, useOnChange, useTicker, type View } from "@/lib/client";
+import { Atmos, BodiesFound, CountdownRing, Soul, SoulList, summonsText, verdictText, winText } from "@/components/shared";
 import { HostPanel } from "./HostPanel";
+import { EmergencyPicker, MeetingStatus, emergencyBlock, meetingRing } from "./Emergency";
 
 export default function HubPage() {
   const mounted = useMounted();
@@ -21,28 +22,44 @@ function Hub() {
   const [hostOpen, setHostOpen] = useState(false);
   const [scare, setScare] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [typed, setTyped] = useState<string | null>(null); // emergency number being typed (null = closed)
   useTicker(250);
   const now = serverNow();
-
   // Keyboard shortcuts for the host: Space = start / play again, S = skip timer, H = host controls.
-  // While playing, any other key rings the emergency bell.
-  const phaseRef = useRef<string | null>(null);
-  const hostOpenRef = useRef(false);
+  // While playing, any other key opens the emergency meeting: type your number, then Enter.
+  const stateRef = useRef<{ s: View | null; hostOpen: boolean; now: number; typed: string | null }>({ s: null, hostOpen: false, now: 0, typed: null });
   useEffect(() => {
-    phaseRef.current = s?.phase ?? null;
-    hostOpenRef.current = hostOpen;
+    stateRef.current = { s, hostOpen, now, typed };
   });
   useEffect(() => {
+    const showToast = (msg: string) => {
+      setToast(msg);
+      setTimeout(() => setToast(null), 3500);
+    };
     const hostCall = (body: Record<string, unknown>) =>
       post<View>("/api/host", body)
         .then((v) => accept({ ...v, me: null }))
-        .catch((e: Error) => {
-          setToast(e.message);
-          setTimeout(() => setToast(null), 3500);
-        });
+        .catch((e: Error) => showToast(e.message));
     const onKey = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement).tagName === "INPUT") return;
-      const phase = phaseRef.current;
+      const { s, hostOpen, now, typed } = stateRef.current;
+      const phase = s?.phase ?? null;
+
+      // Typing a number for the emergency meeting: only digits, Backspace, Enter and Esc work.
+      if (typed !== null) {
+        e.preventDefault();
+        if (e.key === "Escape" || phase !== "playing") setTyped(null);
+        else if (e.key === "Backspace") setTyped(typed.slice(0, -1));
+        else if (/^[0-9]$/.test(e.key) && typed.length < 2) setTyped(typed + e.key);
+        else if (e.key === "Enter" && s) {
+          const p = s.players.find((x) => String(x.num) === typed);
+          if (!p) return showToast("No one has that number.");
+          hostCall({ type: "emergency", id: p.id });
+          setTyped(null);
+        }
+        return;
+      }
+
       if (e.key === "h" || e.key === "H") setHostOpen((o) => !o);
       if (e.key === "Escape") setHostOpen(false);
       if (e.key === " ") {
@@ -53,28 +70,28 @@ function Hub() {
       if ((e.key === "s" || e.key === "S") && (phase === "reveal" || phase === "meeting")) hostCall({ type: "skip" });
       const shortcut = ["h", "H", "s", "S", " ", "Escape"].includes(e.key);
       const modifier = ["Shift", "Control", "Alt", "Meta"].includes(e.key) || e.ctrlKey || e.metaKey || e.altKey;
-      if (phase === "playing" && !shortcut && !modifier && !e.repeat && !hostOpenRef.current) hostCall({ type: "bell" });
+      if (s && phase === "playing" && !shortcut && !modifier && !e.repeat && !hostOpen) {
+        const why = emergencyBlock(s, now);
+        if (why) showToast(why);
+        else setTyped(/^[0-9]$/.test(e.key) ? e.key : "");
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [accept]);
 
   // ── Sound cues ──
-  const stage = s?.phase === "meeting" ? s.meeting?.stage ?? null : null;
   useEventSounds(s, awake);
   useOnChange(s && s.phase !== "lobby" ? `p${s.round}:${s.progress.done}` : null, (k) => {
     if (!k.endsWith(":0")) haunt.chime();
   });
+  // No background noise: only the Blood Moon has a sound bed (siren and heartbeat).
   const moon = !!s?.bloodMoon.active;
-  const pct = s?.progress.total ? s.progress.done / s.progress.total : 0;
   useEffect(() => {
-    if (!awake || !s) return;
+    if (!awake) return;
     haunt.siren(moon);
-    haunt.setHeartbeat(
-      moon ? 130 : stage === "voting" ? 90 : s.phase === "playing" && pct >= 0.75 ? 72 : 0,
-    );
-    haunt.setDrone(s.phase === "meeting" ? 0.06 : 0.12);
-  }, [awake, s, moon, stage, pct]);
+    haunt.setHeartbeat(moon ? 130 : 0);
+  }, [awake, moon]);
 
   // ── Random scares while the house is quiet ──
   const quiet = awake && s?.phase === "playing" && !moon && s.settings.scares;
@@ -123,9 +140,9 @@ function Hub() {
 
   return (
     <>
-      <Atmos red={red} rich />
+      <Atmos red={red} rich hush={!!s?.hush.active} />
       <main
-        className="screen"
+        className={`screen ${s?.hush.active ? "hushed" : ""}`}
         style={{
           width: "100vw",
           height: "100vh",
@@ -160,6 +177,8 @@ function Hub() {
           <h1 className="creep blood" style={{ fontSize: "12vw" }}>{scare}</h1>
         </div>
       )}
+
+      {s && typed !== null && s.phase === "playing" && <EmergencyPicker s={s} typed={typed} />}
 
       {toast && (
         <div className="panel shake" style={{ position: "fixed", top: 20, left: "50%", transform: "translateX(-50%)", zIndex: 50, padding: "14px 28px", fontSize: "1.6vw", fontWeight: 800, borderColor: "var(--blood-bright)" }}>
@@ -222,10 +241,10 @@ function Lobby({ s }: { s: View }) {
         </p>
       </div>
       <div style={{ display: "grid", gap: "3vh" }}>
-        <h2 className="flavor" style={{ fontSize: "1.4vw", letterSpacing: "0.3em", textTransform: "uppercase", color: "var(--dim)", opacity: 0.5 }}>
-          {s.players.length} {s.players.length === 1 ? "soul" : "souls"} gathered
+        <h2 className="flavor" style={{ fontSize: "2.2vw", color: "var(--dim)" }}>
+          {s.players.length === 0 ? "The house is empty…" : `${s.players.length} ${s.players.length === 1 ? "soul has" : "souls have"} gathered`}
         </h2>
-        <div className="panel" style={{ padding: "6vh 3vw", minHeight: "38vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ minHeight: "38vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
           {s.players.length ? (
             <SoulList players={s.players} big />
           ) : (
@@ -285,33 +304,19 @@ const RUNE_COUNT = 13;
 function Haunting({ s, now }: { s: View; now: number }) {
   const { done, total } = s.progress;
   const pct = total ? done / total : 0;
-  const souls = s.players.filter((p) => p.alive).length;
   const saved = s.bloodMoon.savedBy.length > 0 && now - s.bloodMoon.savedAt < 7000;
-  const bellIn = secondsLeft(s.bell.readyAt, now);
   return (
-    <div style={{ display: "grid", gap: "2vh", justifyItems: "center" }}>
-      <div style={{ position: "relative", width: "62vh", height: "62vh" }}>
-        <Sigil pct={pct} />
-        <div style={{ position: "absolute", inset: 0, display: "grid", placeContent: "center", gap: "0.5vh" }}>
-          <p className="creep glow" style={{ fontSize: "4.4vw", color: pct >= 1 ? "#ffe08a" : "var(--candle)", lineHeight: 1 }}>
+    <div className="haunt">
+      <div className="haunt-sigil">
+        <Sigil pct={pct} ring={meetingRing(s, now)} />
+        <div className="haunt-core">
+          <p className="creep glow" style={{ fontSize: "7.5vh", color: pct >= 1 ? "#ffe08a" : "var(--candle)", lineHeight: 1 }}>
             {Math.round(pct * 100)}%
           </p>
-          <p style={{ fontSize: "1.6vw", color: "var(--dim)" }}>Tasks done</p>
+          <p style={{ fontSize: "2vh", color: "var(--dim)" }}>rituals done</p>
         </div>
       </div>
-      <h2 className="creep" style={{ fontSize: "3.4vw" }}>Do your tasks. Find the Possessed.</h2>
-      <p className="flavor" style={{ fontSize: "1.8vw", color: "var(--dim)" }}>Awaken every rune to break the curse…</p>
-      <p style={{ fontSize: "1.8vw", color: "var(--dim)" }}>
-        👥 {souls} player{souls === 1 ? "" : "s"} left · 💀 Found a body? Tap it on your phone.
-      </p>
-      <p style={{ fontSize: "1.8vw", color: bellIn > 0 || s.bell.left === 0 ? "var(--faint)" : "var(--candle)" }}>
-        🔔{" "}
-        {s.bell.left === 0
-          ? "The bell has rung its last."
-          : bellIn > 0
-            ? `The bell wakes in ${dur(bellIn)} · ${s.bell.left} left`
-            : `Press any key for an emergency meeting · ${s.bell.left} left`}
-      </p>
+      <MeetingStatus s={s} now={now} />
       {saved && (
         <div className="overlay fade-in" style={{ background: "rgba(0,0,0,.82)", zIndex: 20 }}>
           <div style={{ fontSize: "9vw", lineHeight: 1 }}>🛡️</div>
@@ -327,7 +332,8 @@ function Haunting({ s, now }: { s: View; now: number }) {
 
 // A turning ring of runes that ignite as tasks are done, a fiery arc filling the circle,
 // and a pentagram whose five lines light up at every 20%.
-function Sigil({ pct }: { pct: number }) {
+// `ring` is the meeting ring around the pentagram: meetings can be called once it's full.
+function Sigil({ pct, ring }: { pct: number; ring: number }) {
   const lit = Math.floor(pct * RUNE_COUNT + 1e-9);
   const complete = pct >= 1;
   const arc = 2 * Math.PI * 76;
@@ -409,6 +415,23 @@ function Sigil({ pct }: { pct: number }) {
         filter="url(#fire-glow)"
         className="sigil-arc"
         style={{ transition: "stroke-dasharray 1.2s ease" }}
+      />
+
+      {/* meeting ring: fills while meetings sleep, glows when one can be called */}
+      <circle cx="100" cy="100" r="67" fill="none" stroke="#141c2a" strokeWidth="2.2" />
+      <circle
+        cx="100"
+        cy="100"
+        r="67"
+        fill="none"
+        stroke={ring >= 1 ? "#d8e6ff" : "#5d7db0"}
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeDasharray={`${2 * Math.PI * 67 * ring} ${2 * Math.PI * 67}`}
+        transform="rotate(-90 100 100)"
+        filter={ring >= 1 ? "url(#fire-glow)" : undefined}
+        className={ring >= 1 ? "meeting-ring full" : "meeting-ring"}
+        style={{ transition: "stroke-dasharray 0.4s linear" }}
       />
 
       {/* pentagram: one line ignites per 20% */}
@@ -513,44 +536,28 @@ function Seance({ s, now }: { s: View; now: number }) {
 
   const voting = m.stage === "voting";
   const living = s.players.filter((p) => p.alive);
+  const marked = voting ? m.voted : m.readyToVote;
   return (
-    <div style={{ display: "grid", gap: "3vh", width: "100%" }}>
-      <h1 className="creep glow" style={{ fontSize: "5vw" }}>{voting ? "🗳️ Vote now!" : "🗣️ Talk time"}</h1>
-      <p style={{ fontSize: "2.2vw", fontStyle: "italic" }}>
-        {voting ? "Vote on your phones. Who is Possessed?" : `Who is Possessed? Talk it out! · ${deadText(s)}`}
-      </p>
-      <p className="creep" style={{ fontSize: "8vw", lineHeight: 1, color: left <= 10 ? "var(--blood-bright)" : "var(--candle)" }}>
-        {fmt(left)}
-      </p>
-      <div className="panel" style={{ padding: "3vh 2vw" }}>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "2.4vw", justifyContent: "center" }}>
-          {s.players.map((p) => {
-            const voted = m.voted.includes(p.id);
-            return (
-              <div
-                key={p.id}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 12,
-                  fontSize: "2vw",
-                  opacity: p.alive ? 1 : 0.35,
-                  textDecoration: p.alive ? "none" : "line-through",
-                }}
-              >
-                <Soul color={p.color} size={26} dead={!p.alive} />
-                {p.name}
-                {voting && voted && <span style={{ color: "var(--candle)" }}>✓</span>}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-      {voting && (
-        <p style={{ fontSize: "2vw", color: "var(--dim)" }}>
-          {m.voted.length}/{living.length} votes sealed
+    <div className="seance">
+      <header>
+        <h1 className="creep seance-title">{voting ? "Vote on your phones" : "Talk it out"}</h1>
+        <p className="flavor seance-sub">
+          {voting
+            ? `${m.voted.length} of ${living.length} votes are in`
+            : `${m.readyToVote.length} of ${living.length} ready to vote`}
         </p>
-      )}
+      </header>
+      <CountdownRing left={left} total={voting ? s.settings.voting : s.settings.discussion} tone={voting ? "vote" : "talk"} size="42vh" />
+      <div className="seance-bodies">{!voting && <BodiesFound s={s} big />}</div>
+      <div className="seance-souls">
+        {s.players.map((p) => (
+          <span key={p.id} className={p.alive ? "" : "gone"}>
+            <Soul color={p.color} size={22} dead={!p.alive} />
+            {p.name}
+            <b>{p.alive && marked.includes(p.id) ? "✓" : ""}</b>
+          </span>
+        ))}
+      </div>
     </div>
   );
 }

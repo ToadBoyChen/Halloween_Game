@@ -1,15 +1,16 @@
 "use client";
 
-import { colorHex, type View } from "@/lib/client";
+import { colorHex, fmt, type View } from "@/lib/client";
 import { Creepy } from "./creepy";
 
-export function Atmos({ red = false, rich = false }: { red?: boolean; rich?: boolean }) {
+export function Atmos({ red = false, rich = false, hush = false }: { red?: boolean; rich?: boolean; hush?: boolean }) {
   return (
     <div className="atmos" aria-hidden>
       <div className="fog" />
       <div className="fog two" />
       <Creepy rich={rich} />
       <div className={`redwash ${red ? "on" : ""}`} />
+      <div className={`hushwash ${hush ? "on" : ""}`} />
       <div className="grain" />
       <div className="vignette" />
     </div>
@@ -39,15 +40,72 @@ export const nameOf = (s: View, id: string | null) => s.players.find((p) => p.id
 export function summonsText(s: View) {
   const m = s.meeting!;
   const caller = nameOf(s, m.callerId);
-  if (m.reason === "report") return { title: "Body Found!", sub: `${caller} found a body.` };
-  if (m.reason === "bell") return { title: "Emergency Meeting!", sub: `${caller} rang the bell.` };
+  if (m.reason === "report") return { title: "Body Found!", sub: `${caller} found a body and called a meeting.` };
+  if (m.reason === "emergency") return { title: "Emergency Meeting!", sub: `${caller} called a meeting.` };
   return { title: "Meeting!", sub: "The house demands a séance." };
 }
 
-export function deadText(s: View) {
-  const dead = s.meeting?.newlyDead ?? [];
-  if (dead.length === 0) return "Nobody was caught since the last meeting.";
-  return `Caught since the last meeting: ${dead.map((id) => nameOf(s, id)).join(", ")}`;
+// A ring that drains clockwise as a meeting stage runs out, with the time in the middle.
+// Orange for talking, red for voting, pale blue for ghosts; red and pulsing for the last 10s.
+export function CountdownRing({ left, total, tone, size }: { left: number; total: number; tone: "talk" | "vote" | "ghost"; size: string }) {
+  const r = 44;
+  const arc = 2 * Math.PI * r;
+  const frac = total > 0 ? Math.min(1, left / total) : 0;
+  const urgent = left <= 10;
+  const color = urgent ? "#ff1f3d" : tone === "vote" ? "#e0182d" : tone === "ghost" ? "#9fd0ff" : "#ffb347";
+  return (
+    <div className={`countdown ${urgent ? "urgent" : ""}`} style={{ width: size, height: size, "--ring": color } as React.CSSProperties}>
+      <svg viewBox="0 0 100 100">
+        {Array.from({ length: 60 }, (_, i) => {
+          const a = (i / 60) * Math.PI * 2;
+          const r1 = i % 5 === 0 ? 47.5 : 48.5;
+          return (
+            <line key={i} x1={50 + Math.sin(a) * r1} y1={50 - Math.cos(a) * r1} x2={50 + Math.sin(a) * 50} y2={50 - Math.cos(a) * 50} stroke="rgba(233,220,192,.25)" strokeWidth="0.4" />
+          );
+        })}
+        <circle cx="50" cy="50" r={r} fill="none" stroke="rgba(255,255,255,.06)" strokeWidth="3" />
+        <circle
+          cx="50"
+          cy="50"
+          r={r}
+          fill="none"
+          stroke={color}
+          strokeWidth="3"
+          strokeLinecap="round"
+          strokeDasharray={`${arc * frac} ${arc}`}
+          transform="rotate(-90 50 50)"
+          style={{ transition: "stroke-dasharray 1s linear, stroke .6s", filter: `drop-shadow(0 0 2px ${color})` }}
+        />
+      </svg>
+      <span className="creep countdown-time" style={{ fontSize: `calc(${size} * 0.3)` }}>
+        {fmt(left)}
+      </span>
+    </div>
+  );
+}
+
+// The bodies found since the last meeting, each a small tombstone with who found it.
+// With no bodies, one line says who called the meeting.
+export function BodiesFound({ s, big = false }: { s: View; big?: boolean }) {
+  const m = s.meeting;
+  const dead = (m?.newlyDead ?? []).map((id) => s.players.find((p) => p.id === id)).filter((p): p is P => !!p);
+  if (dead.length === 0) {
+    const sub = m?.reason === "emergency" ? `${nameOf(s, m.callerId)} called this meeting. No bodies were found.` : "No bodies were found.";
+    return <p className="flavor" style={{ fontSize: big ? "2.2vw" : "1.15rem", color: "var(--dim)" }}>{sub}</p>;
+  }
+  return (
+    <div className={`tombs ${big ? "big" : ""}`}>
+      {dead.map((p) => (
+        <div key={p.id} className="tomb" style={{ "--c": colorHex(p.color) } as React.CSSProperties}>
+          <span className="tomb-skull">💀</span>
+          <span>
+            <strong>{p.name}</strong>
+            <small>found by {p.foundBy ?? "the house"}</small>
+          </span>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 export function verdictText(s: View) {
@@ -73,7 +131,7 @@ export function winText(s: View) {
   if (!w) return { title: "", sub: "", flavor: "" };
   switch (w.reason) {
     case "tasks":
-      return { title: "Mortals Win!", sub: "Every task is done.", flavor: "The Seal is complete. The curse is broken." };
+      return { title: "Mortals Win!", sub: "Every ritual is done.", flavor: "The Seal is complete. The curse is broken." };
     case "banished":
       return { title: "Mortals Win!", sub: "All the Possessed were voted out.", flavor: "The last demon is banished." };
     case "bloodmoon":
@@ -94,8 +152,9 @@ export function SoulList({ players, big = false }: { players: P[]; big?: boolean
             <Soul color={p.color} size={96} dead={!p.alive} />
             <span
               className="flavor"
-              style={{ fontSize: "1.1rem", letterSpacing: "0.08em", color: "var(--dim)", opacity: p.alive ? 0.55 : 0.3 }}
+              style={{ fontSize: "1.35rem", letterSpacing: "0.04em", color: "var(--ink)", opacity: p.alive ? 0.9 : 0.3 }}
             >
+              <span className="num-badge" style={{ fontSize: "1rem", marginRight: 8 }}>{p.num}</span>
               {p.name}
             </span>
           </div>

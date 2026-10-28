@@ -5,14 +5,13 @@
 class Haunt {
   ctx: AudioContext | null = null;
   master!: GainNode;
-  droneGain!: GainNode;
   heartTimer: ReturnType<typeof setTimeout> | null = null;
   heartRate = 0; // beats per minute, 0 = off
   sirenStop: (() => void) | null = null;
 
   // Must be called from a tap/click (browsers block audio until then).
-  // The TV gets the ambient drone; phones only play event sounds.
-  awaken(drone = true) {
+  // There's no ambient sound: only event sounds and the Blood Moon.
+  awaken() {
     if (this.ctx) {
       this.ctx.resume().catch(() => {});
       return;
@@ -22,11 +21,6 @@ class Haunt {
     this.master = ctx.createGain();
     this.master.gain.value = 0.8;
     this.master.connect(ctx.destination);
-    if (drone) this.startDrone();
-    else {
-      this.droneGain = ctx.createGain();
-      this.droneGain.gain.value = 0;
-    }
   }
 
   // The Blood Moon: a deep gong, a wolf howl, and a rising choir.
@@ -118,28 +112,6 @@ class Haunt {
     });
   }
 
-  // A heart monitor flatlining (the Spirit Board, when a soul departs).
-  flatline() {
-    if (!this.ctx) return;
-    const ctx = this.ctx;
-    const t = ctx.currentTime;
-    const beep = (at: number, len: number, vol: number) => {
-      const o = ctx.createOscillator();
-      o.frequency.value = 880;
-      const g = ctx.createGain();
-      g.gain.setValueAtTime(0, at);
-      g.gain.linearRampToValueAtTime(vol, at + 0.01);
-      g.gain.setValueAtTime(vol, at + len - 0.3);
-      g.gain.linearRampToValueAtTime(0, at + len);
-      o.connect(g).connect(this.master);
-      o.start(at);
-      o.stop(at + len + 0.05);
-    };
-    beep(t, 0.12, 0.12);
-    beep(t + 0.5, 0.12, 0.12);
-    beep(t + 1.0, 3.2, 0.1); // the long flat tone
-  }
-
   // A single toll (voting begins).
   toll() {
     if (!this.ctx) return;
@@ -164,56 +136,6 @@ class Haunt {
     const d = buf.getChannelData(0);
     for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
     return buf;
-  }
-
-  private startDrone() {
-    const ctx = this.ctx!;
-    this.droneGain = ctx.createGain();
-    this.droneGain.gain.value = 0.12;
-    const filter = ctx.createBiquadFilter();
-    filter.type = "lowpass";
-    filter.frequency.value = 380;
-    filter.connect(this.droneGain).connect(this.master);
-    for (const [f, detune] of [[55, 0], [55.4, 7], [82.4, -5], [110.3, 3]]) {
-      const o = ctx.createOscillator();
-      o.type = "sawtooth";
-      o.frequency.value = f;
-      o.detune.value = detune;
-      const g = ctx.createGain();
-      g.gain.value = 0.25;
-      // slow wobble
-      const lfo = ctx.createOscillator();
-      lfo.frequency.value = 0.05 + Math.random() * 0.1;
-      const lfoGain = ctx.createGain();
-      lfoGain.gain.value = 0.15;
-      lfo.connect(lfoGain).connect(g.gain);
-      lfo.start();
-      o.connect(g).connect(filter);
-      o.start();
-    }
-    // wind
-    const wind = ctx.createBufferSource();
-    wind.buffer = this.noiseBuffer(4);
-    wind.loop = true;
-    const wf = ctx.createBiquadFilter();
-    wf.type = "bandpass";
-    wf.frequency.value = 500;
-    wf.Q.value = 0.8;
-    const wg = ctx.createGain();
-    wg.gain.value = 0.18;
-    const wl = ctx.createOscillator();
-    wl.frequency.value = 0.08;
-    const wlg = ctx.createGain();
-    wlg.gain.value = 300;
-    wl.connect(wlg).connect(wf.frequency);
-    wl.start();
-    wind.connect(wf).connect(wg).connect(this.droneGain);
-    wind.start();
-  }
-
-  setDrone(level: number) {
-    if (!this.ctx) return;
-    this.droneGain.gain.setTargetAtTime(level, this.ctx.currentTime, 0.8);
   }
 
   bell() {
@@ -320,6 +242,27 @@ class Haunt {
     src.start(t);
     // low boom underneath
     this.thump(t + 0.2, 1.2);
+  }
+
+  // The Hush: a long "shhhh" that swells and dies away, over a low muffled thud.
+  hush() {
+    if (!this.ctx) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime;
+    const src = ctx.createBufferSource();
+    src.buffer = this.noiseBuffer(3);
+    const f = ctx.createBiquadFilter();
+    f.type = "highpass";
+    f.frequency.value = 2400;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.4, t + 0.6);
+    g.gain.linearRampToValueAtTime(0.25, t + 1.6);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 2.8);
+    src.connect(f).connect(g).connect(this.master);
+    src.start(t);
+    src.stop(t + 2.9);
+    this.thump(t, 0.6);
   }
 
   whisper() {

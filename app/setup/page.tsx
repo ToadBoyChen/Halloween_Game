@@ -41,6 +41,7 @@ export default function SetupPage() {
                   {rs.map((r) => (
                     <p key={r.id} style={{ color: "var(--dim)", opacity: r.enabled === false ? 0.4 : 1, marginLeft: 12 }}>
                       {r.name} — {r.instructions}
+                      {r.requires && ` (after ${data.rituals.find((x) => x.id === r.requires)?.name ?? r.requires})`}
                     </p>
                   ))}
                 </div>

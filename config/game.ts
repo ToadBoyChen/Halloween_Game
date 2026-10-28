@@ -3,13 +3,16 @@ import { BLOOD_MOON } from "./bloodmoon";
 // Defaults for the lobby settings (the host can change them on the hub).
 export const DEFAULT_SETTINGS = {
   traitors: 0, // 0 = auto (1 for 3–7 players, 2 for 8+)
-  tasksPerPlayer: 4,
-  killCooldown: 45, // seconds
+  ritualsPerPlayer: 3, // size of the shared ritual pool (capped by how many rituals are enabled)
+  claimTimeout: 300, // seconds a claimed ritual is held before it goes back into the pool
   discussion: 90, // seconds
   voting: 45, // seconds
-  bells: 5, // emergency meetings per game, rung from any key on the TV keyboard
-  bellCooldown: 150, // seconds after play starts or resumes before the bell can ring
+  meetingsPerPlayer: 1, // emergency meetings each player can call from the TV keyboard (reporting a body is free)
+  meetingCooldown: 90, // seconds after play starts or resumes before anyone can call one
   revealOnEject: false,
+  revive: true, // someone reported while still alive can tap "I'm not dead!" until the next meeting ends
+  hush: true, // the Possessed can call the Hush: no meetings for a while
+  hushDuration: 60, // seconds
   bloodMoon: true,
   bloodMoonDuration: BLOOD_MOON.duration, // seconds to stop it
   bloodMoonCooldown: BLOOD_MOON.cooldown, // seconds between Blood Moons
