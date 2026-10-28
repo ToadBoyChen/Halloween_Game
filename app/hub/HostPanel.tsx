@@ -197,46 +197,72 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-const NUMBERS: { key: keyof Settings; label: string; min: number; max: number; step: number; zero?: string }[] = [
+type NumberSetting = { key: keyof Settings; label: string; min: number; max: number; step: number; zero?: string };
+
+const GAME_NUMBERS: NumberSetting[] = [
   { key: "traitors", label: "Possessed", min: 0, max: 3, step: 1, zero: "Auto" },
-  { key: "tasksPerPlayer", label: "Rituals per soul", min: 1, max: 10, step: 1 },
+  { key: "tasksPerPlayer", label: "Tasks per player", min: 1, max: 10, step: 1 },
   { key: "killCooldown", label: "Kill cooldown (s)", min: 10, max: 180, step: 5 },
   { key: "discussion", label: "Discussion (s)", min: 15, max: 300, step: 15 },
   { key: "voting", label: "Voting (s)", min: 15, max: 180, step: 15 },
-  { key: "bellsPerPlayer", label: "Bells per soul", min: 0, max: 3, step: 1 },
+  { key: "bellsPerPlayer", label: "Bells per player", min: 0, max: 3, step: 1 },
 ];
+
+const MOON_NUMBERS: NumberSetting[] = [
+  { key: "bloodMoonDuration", label: "Time to stop it (s)", min: 20, max: 180, step: 10 },
+  { key: "bloodMoonCooldown", label: "Cooldown between (s)", min: 30, max: 600, step: 30 },
+  { key: "bloodMoonGrace", label: "Wait at game start (s)", min: 0, max: 600, step: 30 },
+];
+
+function Stepper({ n, s, set }: { n: NumberSetting; s: View; set: (patch: Partial<Settings>) => void }) {
+  const v = s.settings[n.key] as number;
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <span style={{ flex: 1 }}>{n.label}</span>
+      <button className="btn ghost" style={{ padding: "4px 12px", minHeight: 40 }} disabled={v <= n.min} onClick={() => set({ [n.key]: Math.max(n.min, v - n.step) })}>
+        −
+      </button>
+      <strong style={{ minWidth: 60, textAlign: "center" }}>{v === 0 && n.zero ? `${n.zero} (${s.traitorCount})` : v}</strong>
+      <button className="btn ghost" style={{ padding: "4px 12px", minHeight: 40 }} disabled={v >= n.max} onClick={() => set({ [n.key]: Math.min(n.max, v + n.step) })}>
+        +
+      </button>
+    </div>
+  );
+}
+
+function Toggle({ checked, onChange, children }: { checked: boolean; onChange: (v: boolean) => void; children: React.ReactNode }) {
+  return (
+    <label style={{ display: "flex", gap: 10, alignItems: "center" }}>
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+      {children}
+    </label>
+  );
+}
 
 function SettingsForm({ s, call }: { s: View; call: Call }) {
   const set = (patch: Partial<Settings>) => call({ type: "settings", settings: patch });
   return (
-    <Section title="Settings">
-      {NUMBERS.map((n) => {
-        const v = s.settings[n.key] as number;
-        return (
-          <div key={n.key} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span style={{ flex: 1 }}>{n.label}</span>
-            <button className="btn ghost" style={{ padding: "4px 12px" }} disabled={v <= n.min} onClick={() => set({ [n.key]: v - n.step })}>
-              −
-            </button>
-            <strong style={{ minWidth: 52, textAlign: "center" }}>{v === 0 && n.zero ? `${n.zero} (${s.traitorCount})` : v}</strong>
-            <button className="btn ghost" style={{ padding: "4px 12px" }} disabled={v >= n.max} onClick={() => set({ [n.key]: v + n.step })}>
-              +
-            </button>
-          </div>
-        );
-      })}
-      <label style={{ display: "flex", gap: 10, alignItems: "center" }}>
-        <input type="checkbox" checked={s.settings.revealOnEject} onChange={(e) => set({ revealOnEject: e.target.checked })} />
-        Reveal role when cast into the void
-      </label>
-      <label style={{ display: "flex", gap: 10, alignItems: "center" }}>
-        <input type="checkbox" checked={s.settings.bloodMoon} onChange={(e) => set({ bloodMoon: e.target.checked })} />
-        Blood Moon sabotage
-      </label>
-      <label style={{ display: "flex", gap: 10, alignItems: "center" }}>
-        <input type="checkbox" checked={s.settings.scares} onChange={(e) => set({ scares: e.target.checked })} />
-        Jump scares on the TV (turn off for little kids)
-      </label>
-    </Section>
+    <>
+      <Section title="Settings">
+        {GAME_NUMBERS.map((n) => (
+          <Stepper key={n.key} n={n} s={s} set={set} />
+        ))}
+        <Toggle checked={s.settings.revealOnEject} onChange={(v) => set({ revealOnEject: v })}>
+          Reveal role when voted out
+        </Toggle>
+        <Toggle checked={s.settings.scares} onChange={(v) => set({ scares: v })}>
+          Jump scares on the TV (turn off for little kids)
+        </Toggle>
+      </Section>
+      <Section title="🌕 Blood Moon">
+        <Toggle checked={s.settings.bloodMoon} onChange={(v) => set({ bloodMoon: v })}>
+          Possessed can summon the Blood Moon
+        </Toggle>
+        {s.settings.bloodMoon && MOON_NUMBERS.map((n) => <Stepper key={n.key} n={n} s={s} set={set} />)}
+        <p style={{ color: "var(--dim)", fontSize: ".9rem" }}>
+          Cards and locations live in <code>config/bloodmoon.ts</code>. See them on the setup list.
+        </p>
+      </Section>
+    </>
   );
 }

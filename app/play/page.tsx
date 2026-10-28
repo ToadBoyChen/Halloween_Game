@@ -1,10 +1,12 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { SOUL_COLORS } from "@/config/game";
+import { haunt } from "@/lib/audio";
+import { useEventSounds } from "@/lib/sounds";
 import {
   buzz,
-  fmt,
+  dur,
   post,
   secondsLeft,
   useGame,
@@ -17,36 +19,60 @@ import {
 import { Atmos, deadText, nameOf, Soul, summonsText, verdictText, winText } from "@/components/shared";
 
 const TOKEN_KEY = "possessed-token";
+const SOUND_KEY = "possessed-sound";
 
 type Me = NonNullable<View["me"]>;
 type Send = (body: Record<string, unknown>) => Promise<void>;
+type Sound = { on: boolean; toggle: () => void };
 
 export default function PlayPage() {
   const mounted = useMounted();
   return mounted ? <Phone /> : <Atmos />;
 }
 
-function readToken() {
+function readKey(key: string) {
   try {
-    return localStorage.getItem(TOKEN_KEY);
+    return localStorage.getItem(key);
   } catch {
     return null;
   }
 }
 
+function writeKey(key: string, value: string | null) {
+  try {
+    if (value === null) localStorage.removeItem(key);
+    else localStorage.setItem(key, value);
+  } catch {}
+}
+
 function Phone() {
-  const [token, setToken] = useState<string | null>(readToken);
+  const [token, setToken] = useState<string | null>(() => readKey(TOKEN_KEY));
   const forget = () => {
-    try {
-      localStorage.removeItem(TOKEN_KEY);
-    } catch {}
+    writeKey(TOKEN_KEY, null);
     setToken(null);
   };
   const { state, offline, accept, serverNow } = useGame(token, forget);
-  const [hidden, setHidden] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [soundOn, setSoundOn] = useState(() => readKey(SOUND_KEY) !== "off");
   useWakeLock();
   useTicker(500);
+
+  // Browsers only allow sound after a tap, so unlock audio on the first one.
+  useEffect(() => {
+    if (!soundOn) return;
+    const unlock = () => haunt.awaken(false);
+    window.addEventListener("pointerdown", unlock);
+    return () => window.removeEventListener("pointerdown", unlock);
+  }, [soundOn]);
+  useEventSounds(state, soundOn);
+  const sound: Sound = {
+    on: soundOn,
+    toggle: () => {
+      writeKey(SOUND_KEY, soundOn ? "off" : "on");
+      if (!soundOn) haunt.awaken(false);
+      setSoundOn(!soundOn);
+    },
+  };
 
   useOnChange(state?.phase === "meeting" ? "meeting" : null, () => buzz([400, 150, 400, 150, 800]));
   useOnChange(state?.bloodMoon.active ? "moon" : null, () => buzz([200, 100, 200, 100, 200, 100, 600]));
@@ -67,6 +93,7 @@ function Phone() {
   const s = state;
   const me = s?.me;
   const red = !!s && (s.phase === "meeting" || s.bloodMoon.active);
+  const playing = !!s && !!me && token && s.phase === "playing";
 
   let content;
   if (!s)
@@ -80,27 +107,23 @@ function Phone() {
       <Join
         state={s}
         onJoined={(t, v) => {
-          try {
-            localStorage.setItem(TOKEN_KEY, t);
-          } catch {}
+          writeKey(TOKEN_KEY, t);
           setToken(t);
           accept(v);
         }}
       />
     );
-  else if (s.phase === "lobby") content = <Lobby s={s} me={me} send={send} />;
+  else if (s.phase === "lobby") content = <Lobby s={s} me={me} send={send} sound={sound} />;
   else if (s.phase === "reveal") content = <Reveal s={s} me={me} now={now} />;
   else if (s.phase === "meeting") content = <Meeting s={s} me={me} now={now} send={send} />;
   else if (s.phase === "over") content = <Over s={s} me={me} />;
-  else content = <Playing s={s} me={me} now={now} send={send} onHide={() => setHidden(true)} />;
+  else content = <Playing s={s} me={me} now={now} send={send} sound={sound} />;
 
   return (
     <>
       <Atmos red={red} />
-      <main className="screen phone">
-        {offline && (
-          <p style={{ textAlign: "center", color: "var(--dim)", fontSize: ".9rem" }}>Reconnecting…</p>
-        )}
+      <main className={`screen ${playing ? "game" : "phone"}`}>
+        {offline && <p style={{ textAlign: "center", color: "var(--dim)", fontSize: ".9rem" }}>Reconnecting…</p>}
         {content}
       </main>
       {error && (
@@ -123,7 +146,6 @@ function Phone() {
           {error}
         </div>
       )}
-      {hidden && <HideScreen onReveal={() => setHidden(false)} />}
     </>
   );
 }
@@ -132,13 +154,13 @@ function Center({ children }: { children: React.ReactNode }) {
   return (
     <div
       style={{
-        minHeight: "85dvh",
+        minHeight: "calc(100dvh - 32px)",
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
         justifyContent: "center",
         textAlign: "center",
-        gap: 18,
+        gap: 16,
       }}
     >
       {children}
@@ -149,28 +171,24 @@ function Center({ children }: { children: React.ReactNode }) {
 function Big({ icon, children, red = false }: { icon?: string; children: React.ReactNode; red?: boolean }) {
   return (
     <div style={{ display: "grid", justifyItems: "center", gap: 6 }}>
-      {icon && <div style={{ fontSize: "4rem", lineHeight: 1 }}>{icon}</div>}
-      <h1 className={`creep ${red ? "blood" : "glow"}`} style={{ fontSize: "2.6rem", lineHeight: 1.05 }}>
+      {icon && <div style={{ fontSize: "3.6rem", lineHeight: 1 }}>{icon}</div>}
+      <h1 className={`creep ${red ? "blood" : "glow"}`} style={{ fontSize: "2.5rem", lineHeight: 1.05 }}>
         {children}
       </h1>
     </div>
   );
 }
 
-// Black screen; double-tap to come back.
-function HideScreen({ onReveal }: { onReveal: () => void }) {
-  const last = useRef(0);
+function SoundButton({ sound }: { sound: Sound }) {
   return (
-    <div
-      className="hide-screen"
-      onClick={() => {
-        const t = Date.now();
-        if (t - last.current < 400) onReveal();
-        last.current = t;
-      }}
+    <button
+      className="btn ghost"
+      onClick={sound.toggle}
+      aria-label={sound.on ? "Turn sound off" : "Turn sound on"}
+      style={{ padding: "6px 12px", minHeight: 44, fontSize: "1.2rem" }}
     >
-      double-tap to come back
-    </div>
+      {sound.on ? "🔊" : "🔇"}
+    </button>
   );
 }
 
@@ -210,13 +228,13 @@ function Join({ state, onJoined }: { state: View; onJoined: (token: string, v: V
   };
 
   return (
-    <div className="fade-in" style={{ display: "flex", flexDirection: "column", gap: 18, paddingTop: 20 }}>
+    <div className="fade-in" style={{ display: "flex", flexDirection: "column", gap: 12, paddingTop: 4 }}>
       <div style={{ textAlign: "center" }}>
-        <h1 className="creep blood flicker" style={{ fontSize: "3.4rem", lineHeight: 1 }}>POSSESSED</h1>
-        <p className="flavor" style={{ color: "var(--dim)", marginTop: 10, fontSize: "1.15rem" }}>Enter, if you dare…</p>
+        <h1 className="creep blood flicker join-title">POSSESSED</h1>
+        <p className="flavor join-flavor">Enter, if you dare…</p>
       </div>
-      <label style={{ display: "grid", gap: 8 }}>
-        <span style={{ fontWeight: 800, fontSize: "1.15rem" }}>1. Type your name</span>
+      <label style={{ display: "grid", gap: 6 }}>
+        <span style={{ fontWeight: 800, fontSize: "1.1rem" }}>1. Type your name</span>
         <input
           className="input"
           value={name}
@@ -224,11 +242,11 @@ function Join({ state, onJoined }: { state: View; onJoined: (token: string, v: V
           autoComplete="off"
           onChange={(e) => setName(e.target.value)}
           placeholder="Your name"
-          style={{ fontSize: "1.3rem" }}
+          style={{ fontSize: "1.25rem", padding: "12px 16px" }}
         />
       </label>
-      <div style={{ display: "grid", gap: 4 }}>
-        <span style={{ fontWeight: 800, fontSize: "1.15rem" }}>2. Swipe to choose your soul</span>
+      <div style={{ display: "grid", gap: 2 }}>
+        <span style={{ fontWeight: 800, fontSize: "1.1rem" }}>2. Swipe to choose your soul</span>
         {available.length ? (
           <SoulPicker souls={available} busy={busy} onLock={submit} />
         ) : (
@@ -250,7 +268,6 @@ type SoulType = (typeof SOUL_COLORS)[number];
 function SoulPicker({ souls, busy, onLock }: { souls: SoulType[]; busy: boolean; onLock: (id: string) => void }) {
   const [pickId, setPickId] = useState(souls[0].id);
   const [dir, setDir] = useState<"next" | "prev">("next");
-  const startX = useRef<number | null>(null);
   // If the soul we were looking at gets taken by someone else, fall back to the first free one.
   const index = Math.max(0, souls.findIndex((c) => c.id === pickId));
   const soul = souls[index];
@@ -262,18 +279,10 @@ function SoulPicker({ souls, busy, onLock }: { souls: SoulType[]; busy: boolean;
     buzz(10);
   };
 
+  const swipe = useSwipe(move);
+
   return (
-    <div
-      className="picker"
-      onPointerDown={(e) => (startX.current = e.clientX)}
-      onPointerUp={(e) => {
-        if (startX.current === null) return;
-        const dx = e.clientX - startX.current;
-        startX.current = null;
-        if (Math.abs(dx) > 40) move(dx < 0 ? 1 : -1);
-      }}
-      onPointerCancel={() => (startX.current = null)}
-    >
+    <div className="picker" {...swipe}>
       <button className="arrow left" aria-label="Previous soul" onClick={() => move(-1)}>
         ‹
       </button>
@@ -282,11 +291,11 @@ function SoulPicker({ souls, busy, onLock }: { souls: SoulType[]; busy: boolean;
       </button>
       <div className="stage">
         <div key={soul.id} className={`slide-${dir}`}>
-          <Soul color={soul.id} size={120} />
+          <Soul color={soul.id} size={104} />
         </div>
       </div>
       <div key={`${soul.id}-name`} className={`slide-${dir}`} style={{ textAlign: "center" }}>
-        <p className="creep" style={{ fontSize: "2.2rem", lineHeight: 1, color: soul.hex, textShadow: `0 0 18px ${soul.hex}` }}>
+        <p className="creep" style={{ fontSize: "2.1rem", lineHeight: 1, color: soul.hex, textShadow: `0 0 18px ${soul.hex}` }}>
           {soul.kind}
         </p>
         <p style={{ color: "var(--dim)", fontWeight: 600 }}>
@@ -302,7 +311,7 @@ function SoulPicker({ souls, busy, onLock }: { souls: SoulType[]; busy: boolean;
         className="btn primary"
         disabled={busy}
         onClick={() => onLock(soul.id)}
-        style={{ fontSize: "1.4rem", minHeight: 64, width: "100%", marginTop: 12, borderColor: soul.hex, boxShadow: `0 0 24px ${soul.hex}55 inset` }}
+        style={{ fontSize: "1.35rem", minHeight: 60, width: "100%", marginTop: 8, borderColor: soul.hex, boxShadow: `0 0 24px ${soul.hex}55 inset` }}
       >
         🔒 Lock in {soul.kind}
       </button>
@@ -310,9 +319,28 @@ function SoulPicker({ souls, busy, onLock }: { souls: SoulType[]; busy: boolean;
   );
 }
 
+// Swipe left/right handlers: a horizontal drag of 40px+ calls move(+1 / -1).
+function useSwipe(move: (step: 1 | -1) => void) {
+  const startX = useRef<number | null>(null);
+  return {
+    onPointerDown: (e: React.PointerEvent) => {
+      startX.current = e.clientX;
+    },
+    onPointerUp: (e: React.PointerEvent) => {
+      if (startX.current === null) return;
+      const dx = e.clientX - startX.current;
+      startX.current = null;
+      if (Math.abs(dx) > 40) move(dx < 0 ? 1 : -1);
+    },
+    onPointerCancel: () => {
+      startX.current = null;
+    },
+  };
+}
+
 // ─── Lobby ───────────────────────────────────────────────────
 
-function Lobby({ s, me, send }: { s: View; me: Me; send: Send }) {
+function Lobby({ s, me, send, sound }: { s: View; me: Me; send: Send; sound: Sound }) {
   return (
     <Center>
       <Soul color={me.color} size={90} />
@@ -321,7 +349,13 @@ function Lobby({ s, me, send }: { s: View; me: Me; send: Send }) {
       <p style={{ color: "var(--dim)" }}>
         {s.players.length} player{s.players.length === 1 ? "" : "s"} joined
       </p>
-      <button className="btn ghost" onClick={() => send({ type: "leave" })} style={{ marginTop: 30 }}>
+      <button className="btn" onClick={sound.toggle} style={{ width: "100%", marginTop: 12 }}>
+        {sound.on ? "🔊 Sound is on" : "🔇 Sound is off"}
+        <small style={{ display: "block", fontWeight: 600, fontSize: ".85rem", color: "var(--dim)" }}>
+          {sound.on ? "You'll hear meetings and the Blood Moon" : "Tap to hear meetings and the Blood Moon"}
+        </small>
+      </button>
+      <button className="btn ghost" onClick={() => send({ type: "leave" })}>
         Leave game
       </button>
     </Center>
@@ -330,37 +364,40 @@ function Lobby({ s, me, send }: { s: View; me: Me; send: Send }) {
 
 // ─── Role ────────────────────────────────────────────────────
 
-function RoleCard({ me }: { me: Me }) {
+function RoleCard({ me, compact = false }: { me: Me; compact?: boolean }) {
   const traitor = me.role === "traitor";
   const rules = traitor
     ? [
-        "Tap someone on the shoulder and whisper “you’re mine”.",
+        "Tap a Mortal’s shoulder and whisper “you’re mine” to kill them.",
+        "Wait for the timer between kills.",
         "Your tasks are fake. Pretend to do them!",
-        "Your secret powers are at the bottom of your screen.",
         "Don’t get voted out!",
       ]
-    : ["Do your tasks around the house.", "Find a body? Tell everyone.", "Vote out the Possessed."];
+    : [
+        "Do your tasks around the house.",
+        "If the Possessed taps your shoulder, press “I was killed”.",
+        "Find a body? Tell everyone. Vote out the Possessed!",
+      ];
   return (
-    <div style={{ textAlign: "center", display: "grid", gap: 12 }}>
-      <div style={{ fontSize: "4.5rem", lineHeight: 1 }}>{traitor ? "😈" : "🕯️"}</div>
-      <p style={{ fontSize: "1.1rem" }}>You are</p>
+    <div style={{ textAlign: "center", display: "grid", gap: compact ? 8 : 12 }}>
+      <div style={{ fontSize: compact ? "3.2rem" : "4.2rem", lineHeight: 1 }}>{traitor ? "😈" : "🕯️"}</div>
       <h2
         className={`creep ${traitor ? "blood glitch" : "glow"}`}
-        style={{ fontSize: "3.2rem", lineHeight: 1, color: traitor ? undefined : "var(--candle)" }}
+        style={{ fontSize: compact ? "2.6rem" : "3.1rem", lineHeight: 1, color: traitor ? undefined : "var(--candle)" }}
       >
         {traitor ? "POSSESSED" : "MORTAL"}
       </h2>
-      <p style={{ fontWeight: 800, fontSize: "1.15rem" }}>
+      <p style={{ fontWeight: 800, fontSize: "1.1rem" }}>
         {traitor ? "You’re the secret bad guy. Tell no one!" : "You’re one of the good ones."}
       </p>
-      <ul style={{ textAlign: "left", display: "grid", gap: 6, fontSize: "1.05rem" }}>
+      <ul style={{ textAlign: "left", display: "grid", gap: 5, fontSize: "1rem" }}>
         {rules.map((r) => (
           <li key={r}>• {r}</li>
         ))}
       </ul>
       {traitor && (
         <p className="blood" style={{ fontWeight: 800 }}>
-          {me.allies.length ? `Your teammate: ${me.allies.join(", ")}` : "You are the only one."}
+          {me.allies.length ? `Your teammate: ${me.allies.join(", ")}` : "You are the only Possessed."}
         </p>
       )}
     </div>
@@ -377,99 +414,74 @@ function holdProps(set: (v: boolean) => void) {
   };
 }
 
-function Reveal({ s, me, now }: { s: View; me: Me; now: number }) {
+function HoldToSee({ me, style }: { me: Me; style?: React.CSSProperties }) {
   const [held, setHeld] = useState(false);
+  return (
+    <div
+      {...holdProps(setHeld)}
+      className="panel"
+      style={{
+        padding: 18,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        touchAction: "none",
+        borderColor: held && me.role === "traitor" ? "var(--blood-bright)" : undefined,
+        ...style,
+      }}
+    >
+      {held ? (
+        <RoleCard me={me} compact />
+      ) : (
+        <div style={{ display: "grid", gap: 10, textAlign: "center" }}>
+          <div style={{ fontSize: "3.6rem" }}>👆</div>
+          <p className="creep" style={{ fontSize: "2rem" }}>Press and hold</p>
+          <p style={{ fontSize: "1.1rem" }}>to see your secret role</p>
+          <p style={{ color: "var(--dim)", fontSize: ".9rem" }}>Make sure no one is looking!</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Reveal({ s, me, now }: { s: View; me: Me; now: number }) {
   return (
     <Center>
       <p className="flavor" style={{ fontSize: "1.2rem" }}>One among you is no longer… themselves.</p>
-      <div
-        {...holdProps(setHeld)}
-        className="panel"
-        style={{
-          width: "100%",
-          padding: 24,
-          minHeight: 340,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          touchAction: "none",
-          borderColor: held && me.role === "traitor" ? "var(--blood-bright)" : undefined,
-        }}
-      >
-        {held ? (
-          <RoleCard me={me} />
-        ) : (
-          <div style={{ display: "grid", gap: 12 }}>
-            <div style={{ fontSize: "4rem" }}>👆</div>
-            <p className="creep" style={{ fontSize: "2rem" }}>Press and hold</p>
-            <p style={{ fontSize: "1.1rem" }}>to see your secret role</p>
-          </div>
-        )}
-      </div>
+      <HoldToSee me={me} style={{ width: "100%", minHeight: 360 }} />
       <p style={{ color: "var(--dim)" }}>Starting in {secondsLeft(s.phaseEndsAt, now)}…</p>
     </Center>
   );
 }
 
-// ─── Playing ─────────────────────────────────────────────────
+// ─── Playing: tabs for Tasks / Actions / Role ────────────────
 
+type Tab = "tasks" | "actions" | "role";
 type Confirm = { type: string; icon: string; title: string; body: string };
 
-function Playing({ s, me, now, send, onHide }: { s: View; me: Me; now: number; send: Send; onHide: () => void }) {
+function Playing({ s, me, now, send, sound }: { s: View; me: Me; now: number; send: Send; sound: Sound }) {
+  const [tab, setTab] = useState<Tab>("tasks");
   const [confirm, setConfirm] = useState<Confirm | null>(null);
-  const [peek, setPeek] = useState(false);
-  const traitor = me.role === "traitor";
   const bm = s.bloodMoon;
   const done = me.tasks.filter((t) => t.done).length;
   const pct = s.progress.total ? Math.round((s.progress.done / s.progress.total) * 100) : 0;
 
   return (
-    <div style={{ display: "grid", gap: 16 }}>
+    <>
       <header style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <Soul color={me.color} size={22} dead={!me.alive} />
-        <strong style={{ fontSize: "1.25rem", flex: 1 }}>{me.name}</strong>
-        <button className="btn ghost" style={{ padding: "8px 12px", fontSize: ".95rem", minHeight: 44 }} {...holdProps(setPeek)}>
-          👁 Hold: role
-        </button>
-        <button className="btn ghost" style={{ padding: "8px 12px", fontSize: ".95rem", minHeight: 44 }} onClick={onHide}>
-          🙈 Hide
-        </button>
+        <Soul color={me.color} size={26} dead={!me.alive} />
+        <strong style={{ fontSize: "1.25rem", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {me.name}
+        </strong>
+        <SoundButton sound={sound} />
       </header>
 
-      {peek && (
-        <div className="panel" style={{ padding: 18 }}>
-          <RoleCard me={me} />
-        </div>
-      )}
-
-      {bm.active && (
-        <div className="panel shake" style={{ padding: 18, borderColor: "var(--blood-bright)", textAlign: "center", display: "grid", gap: 6 }}>
-          <div style={{ fontSize: "3rem", lineHeight: 1 }}>🌕</div>
-          <h2 className="creep blood" style={{ fontSize: "2.2rem" }}>Blood Moon!</h2>
-          <p className="creep blood" style={{ fontSize: "3.4rem", lineHeight: 1 }}>{secondsLeft(bm.endsAt, now)}</p>
-          <p style={{ fontWeight: 800, fontSize: "1.1rem" }}>Hurry! Find the 2 cards at:</p>
-          <p style={{ fontSize: "1.4rem", fontWeight: 800, color: "var(--candle)" }}>📍 {bm.locations.join("  +  📍 ")}</p>
-          <p style={{ fontWeight: 600 }}>Then type both cards into the TV.</p>
-        </div>
-      )}
-
-      {!me.alive && (
-        <div className="panel" style={{ padding: 18, textAlign: "center", display: "grid", gap: 6 }}>
-          <div style={{ fontSize: "3rem", lineHeight: 1 }}>👻</div>
-          <h2 className="creep" style={{ fontSize: "2rem", color: "#9fd0ff" }}>
-            {me.ejected ? "You were voted out" : "You are a ghost"}
-          </h2>
-          <p style={{ fontWeight: 800 }}>Shh! Don’t talk.</p>
-          <p>{traitor ? "You can still summon the Blood Moon." : "You can still do your tasks to help your team!"}</p>
-        </div>
-      )}
-
-      <section style={{ display: "grid", gap: 6 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 600 }}>
+      <div style={{ display: "grid", gap: 4 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 600, fontSize: ".9rem" }}>
           <span>🕯️ Team progress</span>
           <span>{pct}%</span>
         </div>
-        <div style={{ height: 12, borderRadius: 6, background: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
+        <div style={{ height: 10, borderRadius: 5, background: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
           <div
             style={{
               width: `${pct}%`,
@@ -480,98 +492,55 @@ function Playing({ s, me, now, send, onHide }: { s: View; me: Me; now: number; s
             }}
           />
         </div>
-      </section>
+      </div>
 
-      <section style={{ display: "grid", gap: 10 }}>
-        <h3 className="creep" style={{ fontSize: "1.9rem" }}>
-          Your Tasks{" "}
-          <span style={{ fontFamily: "var(--body)", fontSize: "1.05rem", color: "var(--dim)", fontWeight: 800 }}>
-            {done} of {me.tasks.length} done
-          </span>
-        </h3>
-        <p style={{ color: "var(--dim)", fontWeight: 600 }}>Go to the place, do what it says, then tap Done.</p>
-        {me.tasks.map((t) => (
-          <div key={t.id} className="panel" style={{ padding: 16, display: "grid", gap: 8, opacity: t.done ? 0.6 : 1 }}>
-            <div style={{ color: "var(--candle)", fontWeight: 800, fontSize: "1.05rem" }}>📍 {t.location}</div>
-            <strong style={{ fontSize: "1.3rem", textDecoration: t.done ? "line-through" : "none" }}>{t.name}</strong>
-            {!t.done && <p style={{ fontSize: "1.1rem" }}>{t.instructions}</p>}
-            {t.done ? (
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <span style={{ color: "#7fdc8a", fontWeight: 800, fontSize: "1.1rem" }}>✓ Done</span>
-                <button
-                  onClick={() => send({ type: "task", id: t.id, done: false })}
-                  style={{ background: "none", border: "none", color: "var(--dim)", textDecoration: "underline", padding: 8 }}
-                >
-                  Undo
-                </button>
-              </div>
-            ) : (
-              <button className="btn" onClick={() => send({ type: "task", id: t.id, done: true })} style={{ fontSize: "1.25rem" }}>
-                ✓ Done!
-              </button>
-            )}
+      {bm.active && (
+        <div className="panel shake" style={{ padding: "10px 14px", borderColor: "var(--blood-bright)", display: "flex", alignItems: "center", gap: 12 }}>
+          <span style={{ fontSize: "2.2rem" }}>🌕</span>
+          <div style={{ flex: 1 }}>
+            <strong className="blood" style={{ fontSize: "1.15rem" }}>BLOOD MOON! Find the cards:</strong>
+            <div style={{ fontWeight: 800, color: "var(--candle)" }}>📍 {bm.locations.join("  +  📍 ")}</div>
+            <div style={{ fontSize: ".9rem" }}>Then type both into the TV.</div>
           </div>
-        ))}
-      </section>
-
-      {me.alive && (
-        <section style={{ display: "grid", gap: 10, marginTop: 8 }}>
-          <button
-            className="btn primary action"
-            disabled={bm.active}
-            onClick={() =>
-              setConfirm({ type: "report", icon: "💀", title: "Did you find a body?", body: "Everyone will go to the TV to talk." })
-            }
-          >
-            <span className="icon">💀</span>
-            <span>
-              I found a body
-              <small>Calls everyone to the TV</small>
-            </span>
-          </button>
-          <button
-            className="btn action"
-            disabled={bm.active || me.bellsLeft <= 0}
-            onClick={() =>
-              setConfirm({
-                type: "bell",
-                icon: "🔔",
-                title: "Ring the bell?",
-                body: `This calls an emergency meeting. You only get ${s.settings.bellsPerPlayer === 1 ? "one" : s.settings.bellsPerPlayer}!`,
-              })
-            }
-          >
-            <span className="icon">🔔</span>
-            <span>
-              Ring the bell
-              <small>{me.bellsLeft > 0 ? `Emergency meeting · ${me.bellsLeft} left` : "No bells left"}</small>
-            </span>
-          </button>
-          {!traitor && (
-            <button
-              className="btn ghost action"
-              onClick={() =>
-                setConfirm({
-                  type: "claimed",
-                  icon: "👻",
-                  title: "Did you get caught?",
-                  body: "Only press Yes if the Possessed tapped your shoulder. Then lie down and stay quiet until someone finds you.",
-                })
-              }
-            >
-              <span className="icon">👻</span>
-              <span>
-                I got caught
-                <small>The Possessed tapped me</small>
-              </span>
-            </button>
-          )}
-          {bm.active && <p style={{ textAlign: "center", color: "var(--dim)" }}>No meetings during the Blood Moon!</p>}
-        </section>
+          <span className="creep blood" style={{ fontSize: "2.4rem" }}>{secondsLeft(bm.endsAt, now)}</span>
+        </div>
       )}
 
-      {/* Kept at the bottom so the top of the screen looks the same for every role. */}
-      {traitor && <PossessedPowers s={s} me={me} now={now} send={send} />}
+      {!me.alive && (
+        <div className="panel" style={{ padding: "10px 14px", display: "flex", alignItems: "center", gap: 12 }}>
+          <span style={{ fontSize: "2.2rem" }}>👻</span>
+          <div>
+            <strong style={{ color: "#9fd0ff", fontSize: "1.1rem" }}>{me.ejected ? "You were voted out." : "You are a ghost."} Shh!</strong>
+            <div style={{ fontSize: ".95rem" }}>
+              {me.role === "traitor" ? "Don’t talk. You can still summon the Blood Moon." : "Don’t talk. You can still do tasks to help!"}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <nav className="tabs" role="tablist">
+        {(
+          [
+            ["tasks", "📜", "Tasks", `${done}/${me.tasks.length}`],
+            ["actions", "⚡", "Actions", null],
+            ["role", "👁", "Role", null],
+          ] as const
+        ).map(([id, icon, label, badge]) => (
+          <button key={id} role="tab" aria-selected={tab === id} className={`tab ${tab === id ? "on" : ""}`} onClick={() => setTab(id)}>
+            <span style={{ fontSize: "1.4rem", lineHeight: 1 }}>{icon}</span>
+            <span>
+              {label}
+              {badge && <span className="badge">{badge}</span>}
+            </span>
+          </button>
+        ))}
+      </nav>
+
+      <div className="tab-body">
+        {tab === "tasks" && <TasksTab me={me} send={send} />}
+        {tab === "actions" && <ActionsTab s={s} me={me} now={now} send={send} confirm={setConfirm} />}
+        {tab === "role" && <HoldToSee me={me} style={{ flex: 1 }} />}
+      </div>
 
       {confirm && (
         <div className="overlay fade-in">
@@ -595,34 +564,178 @@ function Playing({ s, me, now, send, onHide }: { s: View; me: Me; now: number; s
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }
 
-function PossessedPowers({ s, me, now, send }: { s: View; me: Me; now: number; send: Send }) {
+// One big task card at a time; chips along the top jump between tasks.
+function TasksTab({ me, send }: { me: Me; send: Send }) {
+  const firstTodo = me.tasks.find((t) => !t.done)?.id ?? me.tasks[0]?.id;
+  const [selId, setSelId] = useState(firstTodo);
+  const index = Math.max(0, me.tasks.findIndex((t) => t.id === selId));
+  const task = me.tasks[index];
+  const allDone = me.tasks.length > 0 && me.tasks.every((t) => t.done);
+  const move = (step: 1 | -1) => setSelId(me.tasks[(index + step + me.tasks.length) % me.tasks.length].id);
+  const swipe = useSwipe(move);
+  if (!task) return null;
+
+  const complete = async () => {
+    await send({ type: "task", id: task.id, done: true });
+    const next = me.tasks.find((t) => !t.done && t.id !== task.id);
+    if (next) setSelId(next.id);
+  };
+
+  return (
+    <>
+      <div className="chips" style={{ gridTemplateColumns: `repeat(${me.tasks.length}, 1fr)` }}>
+        {me.tasks.map((t, i) => (
+          <button key={t.id} className={`chip ${t.id === task.id ? "on" : ""} ${t.done ? "done" : ""}`} onClick={() => setSelId(t.id)}>
+            {t.done ? "✓" : i + 1}
+          </button>
+        ))}
+      </div>
+
+      <div key={task.id} className="panel task-card fade-in" {...swipe}>
+        <div style={{ color: "var(--candle)", fontWeight: 800, fontSize: "1.2rem" }}>📍 {task.location}</div>
+        <h3 style={{ fontSize: "1.6rem", fontWeight: 800, lineHeight: 1.15, textDecoration: task.done ? "line-through" : "none" }}>
+          {task.name}
+        </h3>
+        <p style={{ fontSize: "1.2rem", lineHeight: 1.4 }}>{task.instructions}</p>
+        <div style={{ marginTop: "auto", display: "grid", gap: 8 }}>
+          {allDone && (
+            <p style={{ textAlign: "center", fontWeight: 800, color: "#7fdc8a" }}>
+              🎉 All your tasks are done! {me.role === "traitor" ? "Keep blending in…" : "Watch out for the Possessed…"}
+            </p>
+          )}
+          {task.done ? (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span style={{ color: "#7fdc8a", fontWeight: 800, fontSize: "1.3rem" }}>✓ Done</span>
+              <button
+                onClick={() => send({ type: "task", id: task.id, done: false })}
+                style={{ background: "none", border: "none", color: "var(--dim)", textDecoration: "underline", padding: 8 }}
+              >
+                Undo
+              </button>
+            </div>
+          ) : (
+            <button className="btn primary" onClick={complete} style={{ fontSize: "1.4rem", minHeight: 64 }}>
+              ✓ Done!
+            </button>
+          )}
+          <p style={{ textAlign: "center", color: "var(--dim)", fontSize: ".85rem" }}>
+            Task {index + 1} of {me.tasks.length} · swipe for the next one
+          </p>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function ActionsTab({
+  s,
+  me,
+  now,
+  send,
+  confirm,
+}: {
+  s: View;
+  me: Me;
+  now: number;
+  send: Send;
+  confirm: (c: Confirm) => void;
+}) {
+  const traitor = me.role === "traitor";
+  const bm = s.bloodMoon;
   const killIn = secondsLeft(me.killReadyAt, now);
   const moonIn = secondsLeft(me.summonReadyAt, now);
+
+  if (!me.alive && !(traitor && s.settings.bloodMoon)) {
+    return (
+      <div className="panel" style={{ flex: 1, display: "grid", placeContent: "center", textAlign: "center", gap: 10, padding: 20 }}>
+        <div style={{ fontSize: "3.5rem" }}>👻</div>
+        <p className="creep" style={{ fontSize: "2rem", color: "#9fd0ff" }}>Ghosts can’t use actions</p>
+        <p>You can still finish your tasks.</p>
+      </div>
+    );
+  }
+
   return (
-    <div className="panel" style={{ padding: 16, display: "grid", gap: 10, borderColor: "rgba(255,31,61,.6)" }}>
-      <h3 className="creep blood" style={{ fontSize: "1.6rem" }}>😈 Your secret powers</h3>
-      {me.allies.length > 0 && <p style={{ fontWeight: 800 }}>Teammate: {me.allies.join(", ")}</p>}
-      {me.alive && (
-        <button className="btn primary action" disabled={killIn > 0} onClick={() => send({ type: "kill" })}>
-          <span className="icon">🩸</span>
+    <div className="actions">
+      {traitor && me.alive && (
+        <div
+          className="panel action-tile"
+          style={{
+            borderColor: killIn > 0 ? "var(--faint)" : "var(--blood-bright)",
+            boxShadow: killIn > 0 ? "none" : "0 0 22px rgba(255,31,61,.3) inset",
+          }}
+        >
+          <span className="icon">{killIn > 0 ? "⏳" : "🔪"}</span>
           <span>
-            {killIn > 0 ? `Wait ${fmt(killIn)}` : "I caught someone"}
-            <small>{killIn > 0 ? "Before you can catch someone again" : "Press after you tap someone"}</small>
+            {killIn > 0 ? `Wait ${dur(killIn)} to kill again` : "Ready to kill!"}
+            <small>Tap a Mortal’s shoulder, whisper “you’re mine”</small>
           </span>
-        </button>
+        </div>
       )}
-      {s.settings.bloodMoon && (
-        <button className="btn primary action" disabled={moonIn > 0 || s.bloodMoon.active} onClick={() => send({ type: "summon" })}>
+      {traitor && s.settings.bloodMoon && (
+        <button className="btn primary action action-tile" disabled={moonIn > 0 || bm.active} onClick={() => send({ type: "summon" })}>
           <span className="icon">🌕</span>
           <span>
             Summon the Blood Moon
             <small>
-              {s.bloodMoon.active ? "It’s rising now!" : moonIn > 0 ? `Ready in ${fmt(moonIn)}` : "They get 60 seconds to stop it"}
+              {bm.active ? "It’s rising now!" : moonIn > 0 ? `Ready in ${dur(moonIn)}` : `They get ${s.settings.bloodMoonDuration}s to stop it`}
             </small>
+          </span>
+        </button>
+      )}
+      {me.alive && (
+        <>
+          <button
+            className="btn primary action action-tile"
+            disabled={bm.active}
+            onClick={() => confirm({ type: "report", icon: "💀", title: "Did you find a body?", body: "Everyone will go to the TV to talk." })}
+          >
+            <span className="icon">💀</span>
+            <span>
+              I found a body
+              <small>{bm.active ? "Not during the Blood Moon!" : "Calls everyone to the TV"}</small>
+            </span>
+          </button>
+          <button
+            className="btn action action-tile"
+            disabled={bm.active || me.bellsLeft <= 0}
+            onClick={() =>
+              confirm({
+                type: "bell",
+                icon: "🔔",
+                title: "Ring the bell?",
+                body: `This calls an emergency meeting. You only get ${s.settings.bellsPerPlayer === 1 ? "one" : s.settings.bellsPerPlayer}!`,
+              })
+            }
+          >
+            <span className="icon">🔔</span>
+            <span>
+              Ring the bell
+              <small>{bm.active ? "Not during the Blood Moon!" : me.bellsLeft > 0 ? `Emergency meeting · ${me.bellsLeft} left` : "No bells left"}</small>
+            </span>
+          </button>
+        </>
+      )}
+      {me.alive && !traitor && (
+        <button
+          className="btn ghost action action-tile"
+          onClick={() =>
+            confirm({
+              type: "claimed",
+              icon: "💀",
+              title: "Were you killed?",
+              body: "Only press Yes if the Possessed tapped your shoulder. Then lie down and stay quiet until someone finds you.",
+            })
+          }
+        >
+          <span className="icon">🔪</span>
+          <span>
+            I was killed
+            <small>The Possessed tapped my shoulder</small>
           </span>
         </button>
       )}
@@ -674,7 +787,7 @@ function Meeting({ s, me, now, send }: { s: View; me: Me; now: number; send: Sen
           {me.alive ? "Who is the Possessed? Talk it out!" : "You’re a ghost. Shh, no talking!"}
         </p>
         <p style={{ fontSize: "1.1rem" }}>{deadText(s)}</p>
-        <p style={{ color: "var(--dim)", fontSize: "1.1rem" }}>Voting starts in {fmt(left)}</p>
+        <p style={{ color: "var(--dim)", fontSize: "1.1rem" }}>Voting starts in {dur(left)}</p>
       </Center>
     );
   }
@@ -684,7 +797,7 @@ function Meeting({ s, me, now, send }: { s: View; me: Me; now: number; send: Sen
     return (
       <Center>
         <Big icon="👻">Ghosts can’t vote</Big>
-        <p style={{ fontSize: "1.1rem" }}>Watch quietly. {fmt(left)} left.</p>
+        <p style={{ fontSize: "1.1rem" }}>Watch quietly. {dur(left)} left.</p>
       </Center>
     );
   }
@@ -694,41 +807,45 @@ function Meeting({ s, me, now, send }: { s: View; me: Me; now: number; send: Sen
         <Big icon="✅">Vote sent!</Big>
         <p style={{ fontSize: "1.2rem" }}>{me.vote === "skip" ? "You skipped." : `You voted for ${nameOf(s, me.vote)}.`}</p>
         <p style={{ color: "var(--dim)" }}>
-          {m.voted.length} of {living.length} voted · {fmt(left)} left
+          {m.voted.length} of {living.length} voted · {dur(left)} left
         </p>
       </Center>
     );
   }
   return (
-    <div style={{ display: "grid", gap: 12 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 10, minHeight: "calc(100dvh - 32px)" }}>
       <div style={{ textAlign: "center" }}>
-        <h1 className="creep blood" style={{ fontSize: "2.4rem" }}>Who is Possessed?</h1>
-        <p style={{ fontWeight: 600 }}>Tap a name, then tap Vote. {fmt(left)} left.</p>
+        <h1 className="creep blood" style={{ fontSize: "2.1rem", lineHeight: 1.1 }}>Who is Possessed?</h1>
+        <p style={{ fontWeight: 600 }}>Tap a name, then tap Vote · {dur(left)} left</p>
       </div>
-      {living.map((p) => (
-        <button
-          key={p.id}
-          className="btn"
-          onClick={() => setPick(p.id)}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 14,
-            fontSize: "1.3rem",
-            borderWidth: pick === p.id ? 3 : 1,
-            borderColor: pick === p.id ? "var(--blood-bright)" : undefined,
-          }}
-        >
-          <Soul color={p.color} size={22} />
-          {p.name}
-          {p.id === me.id && <span style={{ color: "var(--dim)", fontWeight: 600 }}>(you)</span>}
-          {pick === p.id && <span style={{ marginLeft: "auto" }}>👈</span>}
-        </button>
-      ))}
+      <div className="vote-grid">
+        {living.map((p) => (
+          <button
+            key={p.id}
+            className="btn"
+            onClick={() => setPick(p.id)}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              fontSize: "1.1rem",
+              borderWidth: pick === p.id ? 3 : 1,
+              borderColor: pick === p.id ? "var(--blood-bright)" : undefined,
+              overflow: "hidden",
+            }}
+          >
+            <Soul color={p.color} size={22} />
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {p.name}
+              {p.id === me.id ? " (you)" : ""}
+            </span>
+          </button>
+        ))}
+      </div>
       <button
         className="btn ghost"
         onClick={() => setPick("skip")}
-        style={{ fontSize: "1.2rem", borderWidth: pick === "skip" ? 3 : 1, borderColor: pick === "skip" ? "var(--blood-bright)" : undefined }}
+        style={{ fontSize: "1.15rem", borderWidth: pick === "skip" ? 3 : 1, borderColor: pick === "skip" ? "var(--blood-bright)" : undefined }}
       >
         🤷 Skip (not sure)
       </button>
@@ -736,9 +853,9 @@ function Meeting({ s, me, now, send }: { s: View; me: Me; now: number; send: Sen
         className="btn primary"
         disabled={!pick}
         onClick={() => pick && send({ type: "vote", target: pick })}
-        style={{ fontSize: "1.4rem", minHeight: 64, marginTop: 8 }}
+        style={{ fontSize: "1.35rem", minHeight: 56, marginTop: "auto" }}
       >
-        🗳️ Vote
+        🗳️ Vote{pick ? (pick === "skip" ? ": Skip" : `: ${nameOf(s, pick)}`) : ""}
       </button>
     </div>
   );
@@ -752,22 +869,20 @@ function Over({ s, me }: { s: View; me: Me }) {
   const won = s.winner?.side === me.role;
   return (
     <Center>
-      <div style={{ fontSize: "4rem", lineHeight: 1 }}>{won ? "🎉" : "💀"}</div>
-      <p className="creep" style={{ fontSize: "2.2rem", color: won ? "#7fdc8a" : "var(--blood-bright)" }}>
+      <div style={{ fontSize: "3.4rem", lineHeight: 1 }}>{won ? "🎉" : "💀"}</div>
+      <p className="creep" style={{ fontSize: "2rem", color: won ? "#7fdc8a" : "var(--blood-bright)" }}>
         {won ? "Your team won!" : "Your team lost"}
       </p>
-      <h1 className={`creep ${traitorWin ? "blood" : "glow"}`} style={{ fontSize: "2.4rem", lineHeight: 1.05, color: traitorWin ? undefined : "var(--candle)" }}>
+      <h1 className={`creep ${traitorWin ? "blood" : "glow"}`} style={{ fontSize: "2.2rem", lineHeight: 1.05, color: traitorWin ? undefined : "var(--candle)" }}>
         {w.title}
       </h1>
-      <p className="flavor" style={{ fontSize: "1.15rem" }}>{w.flavor}</p>
       <p style={{ fontWeight: 600 }}>{w.sub}</p>
-      <div className="panel" style={{ padding: 16, width: "100%", display: "grid", gap: 10 }}>
+      <div className="panel" style={{ padding: 12, width: "100%", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
         {s.players.map((p) => (
-          <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: "1.1rem" }}>
-            <Soul color={p.color} size={16} dead={!p.alive} />
-            <span style={{ flex: 1, textAlign: "left" }}>{p.name}</span>
-            <span className={p.role === "traitor" ? "blood" : ""} style={{ fontWeight: 800 }}>
-              {p.role === "traitor" ? "😈 Possessed" : "🕯️ Mortal"}
+          <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: ".95rem", overflow: "hidden" }}>
+            <Soul color={p.color} size={14} dead={!p.alive} />
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {p.role === "traitor" ? "😈" : "🕯️"} {p.name}
             </span>
           </div>
         ))}

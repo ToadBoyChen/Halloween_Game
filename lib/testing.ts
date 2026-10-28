@@ -45,7 +45,7 @@ function forceRole(g: Game, p: Player, role: Role) {
 
 // Let the Possessed kill and summon right now.
 function skipCooldowns(g: Game, now: number) {
-  g.startedAt = Math.min(g.startedAt, now - BLOOD_MOON.graceStart * 1000 - 1);
+  g.startedAt = Math.min(g.startedAt, now - g.settings.bloodMoonGrace * 1000 - 1);
   g.bloodMoon.lastEndedAt = 0;
   g.players.forEach((p) => (p.lastKillAt = now - g.settings.killCooldown * 1000 - 1));
 }

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import QRCode from "qrcode";
 import { haunt } from "@/lib/audio";
+import { useEventSounds } from "@/lib/sounds";
 import { fmt, post, secondsLeft, useGame, useMounted, useOnChange, useTicker, type View } from "@/lib/client";
 import { Atmos, deadText, Soul, SoulList, summonsText, verdictText, winText } from "@/components/shared";
 import { HostPanel } from "./HostPanel";
@@ -34,12 +35,7 @@ function Hub() {
 
   // ── Sound cues ──
   const stage = s?.phase === "meeting" ? s.meeting?.stage ?? null : null;
-  useOnChange(s?.phase === "reveal" ? `reveal${s.round}` : null, () => haunt.sting());
-  useOnChange(stage ? `m:${stage}` : null, (k) => {
-    if (k === "m:summons") haunt.bell();
-    if (k === "m:verdict" && s?.meeting?.result?.ejectedId) haunt.whoosh();
-  });
-  useOnChange(s?.phase === "over" ? `over${s.round}` : null, () => haunt.bell());
+  useEventSounds(s, awake);
   useOnChange(s && s.phase !== "lobby" ? `p${s.round}:${s.progress.done}` : null, (k) => {
     if (!k.endsWith(":0")) haunt.chime();
   });

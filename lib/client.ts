@@ -83,6 +83,11 @@ export function fmt(sec: number) {
   return m > 0 ? `${m}:${String(s).padStart(2, "0")}` : `${s}`;
 }
 
+// Like fmt, but with a unit for short times: "40s", "1:55".
+export function dur(sec: number) {
+  return sec >= 60 ? fmt(sec) : `${sec}s`;
+}
+
 export const colorHex = (id: string) => SOUL_COLORS.find((c) => c.id === id)?.hex ?? "#888";
 
 // Fires `fn` once each time `key` changes to a new non-null value.

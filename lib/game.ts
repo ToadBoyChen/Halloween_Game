@@ -261,7 +261,6 @@ export type Action =
   | { type: "leave" }
   | { type: "task"; id: string; done: boolean }
   | { type: "claimed" }
-  | { type: "kill" }
   | { type: "report" }
   | { type: "bell" }
   | { type: "vote"; target: string }
@@ -286,15 +285,11 @@ export function act(g: Game, p: Player, a: Action, now: number) {
     case "claimed":
       if (!playing) fail("Not now.");
       if (!p.alive) fail("You are already a ghost.");
-      if (p.role === "traitor") fail("The Possessed can't be caught.");
+      if (p.role === "traitor") fail("The Possessed can't be killed.");
       p.alive = false;
+      // We don't know which Possessed did it, so every Possessed shares one kill cooldown.
+      g.players.filter((x) => x.role === "traitor").forEach((x) => (x.lastKillAt = now));
       checkAndEnd(g);
-      return;
-
-    case "kill":
-      if (!playing || p.role !== "traitor" || !p.alive) fail("Not now.");
-      if (now < p.lastKillAt + g.settings.killCooldown * 1000) fail("Not yet. Wait for the timer.");
-      p.lastKillAt = now;
       return;
 
     case "report":
@@ -337,16 +332,19 @@ export function act(g: Game, p: Player, a: Action, now: number) {
       bm.seal = choices[Math.floor(Math.random() * choices.length)];
       bm.used.push(bm.seal);
       bm.active = true;
-      bm.endsAt = now + BLOOD_MOON.duration * 1000;
+      bm.endsAt = now + g.settings.bloodMoonDuration * 1000;
       return;
     }
+
+    default:
+      fail("Unknown action.");
   }
 }
 
 export function summonReadyAt(g: Game) {
   return Math.max(
-    g.startedAt + BLOOD_MOON.graceStart * 1000,
-    g.bloodMoon.lastEndedAt ? g.bloodMoon.lastEndedAt + BLOOD_MOON.cooldown * 1000 : 0,
+    g.startedAt + g.settings.bloodMoonGrace * 1000,
+    g.bloodMoon.lastEndedAt ? g.bloodMoon.lastEndedAt + g.settings.bloodMoonCooldown * 1000 : 0,
   );
 }
 

@@ -13,6 +13,7 @@
 export type SealCard = { location: string; card: string };
 export type Seal = { cards: [SealCard, SealCard] };
 
+// The timings below are defaults; the host can change them in the hub's host panel.
 export const BLOOD_MOON = {
   duration: 60, // seconds to stop it
   cooldown: 180, // seconds between Blood Moons (shared by all Possessed)

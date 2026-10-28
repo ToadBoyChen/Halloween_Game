@@ -1,3 +1,5 @@
+import { BLOOD_MOON } from "./bloodmoon";
+
 // Defaults for the lobby settings (the host can change them on the hub).
 export const DEFAULT_SETTINGS = {
   traitors: 0, // 0 = auto (1 for 6–7 players, 2 for 8+)
@@ -8,6 +10,9 @@ export const DEFAULT_SETTINGS = {
   bellsPerPlayer: 1,
   revealOnEject: false,
   bloodMoon: true,
+  bloodMoonDuration: BLOOD_MOON.duration, // seconds to stop it
+  bloodMoonCooldown: BLOOD_MOON.cooldown, // seconds between Blood Moons
+  bloodMoonGrace: BLOOD_MOON.graceStart, // seconds before the first one is allowed
   scares: true, // occasional jump-scare flashes on the TV
 };
 

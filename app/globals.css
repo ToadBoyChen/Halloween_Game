@@ -365,22 +365,9 @@ button:disabled {
   max-width: 480px;
   margin: 0 auto;
   min-height: 100dvh;
-  padding: 16px 16px 40px;
+  padding: 16px;
   user-select: none;
   -webkit-user-select: none;
-}
-
-.hide-screen {
-  position: fixed;
-  inset: 0;
-  z-index: 50;
-  background: #000;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  padding-bottom: 40px;
-  color: #1a1a1a;
-  font-size: 0.8rem;
 }
 
 .overlay {
@@ -596,12 +583,12 @@ button:disabled {
   position: relative;
   display: grid;
   justify-items: center;
-  gap: 10px;
-  padding: 18px 0 8px;
+  gap: 8px;
+  padding: 8px 0 0;
   touch-action: pan-y;
 }
 .picker .stage {
-  height: 190px;
+  height: 150px;
   display: grid;
   place-items: center;
 }
@@ -621,7 +608,7 @@ button:disabled {
 }
 .picker .arrow {
   position: absolute;
-  top: 100px;
+  top: 82px;
   transform: translateY(-50%);
   width: 56px;
   height: 56px;
@@ -653,4 +640,158 @@ button:disabled {
   opacity: 1;
   transform: scale(1.4);
   box-shadow: 0 0 8px var(--c);
+}
+
+/* ─── Game screen: fits one phone screen, no scrolling ──── */
+
+.game {
+  max-width: 480px;
+  margin: 0 auto;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.tabs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  padding: 5px;
+  border-radius: 16px;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid var(--line);
+}
+.tab {
+  min-height: 58px;
+  border: none;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--dim);
+  font-weight: 800;
+  font-size: 1rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  transition: background 0.2s, color 0.2s;
+}
+.tab.on {
+  color: #fff;
+  background: linear-gradient(180deg, rgba(179, 0, 27, 0.75), rgba(90, 0, 14, 0.85));
+  box-shadow: 0 0 16px rgba(255, 31, 61, 0.35);
+}
+.tab .badge {
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  font-size: 0.8rem;
+}
+
+/* Fills the rest of the screen; scrolls only as a last resort on tiny phones. */
+.tab-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.chips {
+  display: grid;
+  gap: 8px;
+}
+.chip {
+  min-height: 44px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgba(0, 0, 0, 0.5);
+  color: var(--ink);
+  font-weight: 800;
+  font-size: 1.15rem;
+}
+.chip.on {
+  border: 2px solid var(--candle);
+  box-shadow: 0 0 12px rgba(255, 179, 71, 0.35);
+}
+.chip.done {
+  color: #7fdc8a;
+  background: rgba(60, 140, 70, 0.15);
+}
+
+.task-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px;
+  touch-action: pan-y;
+}
+
+.actions {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.action-tile {
+  flex: 1;
+  max-height: 120px;
+  min-height: 64px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 16px;
+  font-weight: 800;
+  font-size: 1.2rem;
+  text-align: left;
+}
+.action-tile .icon {
+  font-size: 2.2rem;
+  line-height: 1;
+  width: 2.6rem;
+  text-align: center;
+}
+.action-tile small {
+  display: block;
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--dim);
+}
+
+/* Voting grid: compact enough for 9 players on a small phone */
+.vote-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.vote-grid .btn {
+  min-height: 52px;
+  padding: 8px 10px;
+}
+@media (max-height: 600px) {
+  .vote-grid { gap: 6px; }
+  .vote-grid .btn { min-height: 46px; font-size: 1rem !important; }
+}
+
+.join-title {
+  font-size: 3rem;
+  line-height: 1;
+}
+.join-flavor {
+  color: var(--dim);
+  margin-top: 4px;
+  font-size: 1.1rem;
+}
+@media (max-height: 600px) {
+  .join-title { font-size: 2.4rem; }
+  .join-flavor { display: none; }
+  .picker .stage { height: 132px; }
+  .picker .arrow { top: 72px; }
 }

@@ -13,15 +13,19 @@ A physical, phone-driven social deduction game for a Halloween party. The hub (`
 
 - **Mortals** win when every Possessed is cast into the void, or every Mortal ritual is complete.
 - **The Possessed** win when living Possessed ≥ living Mortals, or when a Blood Moon isn't stopped in time.
-- **Claiming a soul:** the Possessed taps a Mortal on the shoulder and whispers "you're mine", then presses *I claimed a soul* to start their cooldown. The victim lies down and presses *I've been claimed*.
+- **Killing:** the Possessed taps a Mortal on the shoulder and whispers "you're mine". The victim presses *I was killed* and lies down. Each kill restarts one shared cooldown for all Possessed (the app doesn't know who did it). It's shown on the Possessed's phones and works on the honor system.
 - **Séance:** started by *Found a Corpse* or *Ring the Bell* (one per player). Discussion → voting on phones → verdict.
-- **Blood Moon:** the Possessed summon it; everyone has 60s to find the two cards and type both into the hub.
+- **Blood Moon:** the Possessed summon it; everyone has 60s (adjustable) to find the two cards and type both into the hub. Its timings are in the host panel under **🌕 Blood Moon**.
+
+## Sound
+
+The TV plays ambient sound plus every game event. Phones play only shared moments: game start, meeting bell, voting, verdict, the Blood Moon (gong + wolf howl) and game over. Private taps are silent so phones never give away where someone is. Each player can mute with 🔊 in the header or lobby. iPhones in silent mode won't play web audio.
 
 ## Adding or removing things
 
 - Rituals: `config/rituals.ts`. Add an entry, delete one, or set `enabled: false`. You can also toggle rituals in the host panel.
 - Blood Moon cards and locations: `config/bloodmoon.ts`. Add one `seals` entry per pair of cards.
-- Default timers and settings: `config/game.ts`. Most can also be changed in the host panel lobby.
+- Default timers and settings: `config/game.ts` (Blood Moon defaults in `config/bloodmoon.ts`). All of them can be changed in the host panel lobby.
 
 ## Deploying on Vercel
 
