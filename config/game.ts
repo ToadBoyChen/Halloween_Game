@@ -7,7 +7,8 @@ export const DEFAULT_SETTINGS = {
   killCooldown: 45, // seconds
   discussion: 90, // seconds
   voting: 45, // seconds
-  bellsPerPlayer: 1,
+  bells: 5, // emergency meetings per game, rung from any key on the TV keyboard
+  bellCooldown: 150, // seconds after play starts or resumes before the bell can ring
   revealOnEject: false,
   bloodMoon: true,
   bloodMoonDuration: BLOOD_MOON.duration, // seconds to stop it

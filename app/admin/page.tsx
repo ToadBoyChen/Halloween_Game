@@ -183,7 +183,7 @@ function Controls() {
           {btn("Kill a bot", { do: "botkill" }, false, phase !== "playing")}
           {btn("Kill me", { do: "botkill", name: human }, false, phase !== "playing" || !human)}
           {btn("Bot reports body", { do: "botreport" }, false, phase !== "playing")}
-          {btn("Bot rings bell", { do: "botbell" }, false, phase !== "playing")}
+          {btn("Ring the bell", { do: "bell" }, false, phase !== "playing")}
           {btn("Bot stops Blood Moon", { do: "botseal" }, false, !bm?.active)}
           {btn("Clear cooldowns", { do: "cooldowns" }, false, phase !== "playing")}
           {btn("Bots vote skip", { do: "botvote", target: "skip" }, false, s?.stage !== "voting")}

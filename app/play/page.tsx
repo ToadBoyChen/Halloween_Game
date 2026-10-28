@@ -777,37 +777,17 @@ function ActionsTab({
         </button>
       )}
       {me.alive && (
-        <>
-          <button
-            className="btn primary action action-tile"
-            disabled={bm.active}
-            onClick={() => confirm({ type: "report", icon: "💀", title: "Did you find a body?", body: "Everyone will go to the TV to talk." })}
-          >
-            <span className="icon">💀</span>
-            <span>
-              I found a body
-              <small>{bm.active ? "Not during the Blood Moon!" : "Calls everyone to the TV"}</small>
-            </span>
-          </button>
-          <button
-            className="btn action action-tile"
-            disabled={bm.active || me.bellsLeft <= 0}
-            onClick={() =>
-              confirm({
-                type: "bell",
-                icon: "🔔",
-                title: "Ring the bell?",
-                body: `This calls an emergency meeting. You only get ${s.settings.bellsPerPlayer === 1 ? "one" : s.settings.bellsPerPlayer}!`,
-              })
-            }
-          >
-            <span className="icon">🔔</span>
-            <span>
-              Ring the bell
-              <small>{bm.active ? "Not during the Blood Moon!" : me.bellsLeft > 0 ? `Emergency meeting · ${me.bellsLeft} left` : "No bells left"}</small>
-            </span>
-          </button>
-        </>
+        <button
+          className="btn primary action action-tile"
+          disabled={bm.active}
+          onClick={() => confirm({ type: "report", icon: "💀", title: "Did you find a body?", body: "Everyone will go to the TV to talk." })}
+        >
+          <span className="icon">💀</span>
+          <span>
+            I found a body
+            <small>{bm.active ? "Not during the Blood Moon!" : "Calls everyone to the TV"}</small>
+          </span>
+        </button>
       )}
       {me.alive && !traitor && (
         <button

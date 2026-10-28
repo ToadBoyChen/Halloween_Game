@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import QRCode from "qrcode";
 import { haunt } from "@/lib/audio";
 import { useEventSounds } from "@/lib/sounds";
-import { fmt, post, secondsLeft, useGame, useMounted, useOnChange, useTicker, type View } from "@/lib/client";
+import { dur, fmt, post, secondsLeft, useGame, useMounted, useOnChange, useTicker, type View } from "@/lib/client";
 import { Atmos, deadText, Soul, SoulList, summonsText, verdictText, winText } from "@/components/shared";
 import { HostPanel } from "./HostPanel";
 
@@ -25,9 +25,12 @@ function Hub() {
   const now = serverNow();
 
   // Keyboard shortcuts for the host: Space = start / play again, S = skip timer, H = host controls.
+  // While playing, any other key rings the emergency bell.
   const phaseRef = useRef<string | null>(null);
+  const hostOpenRef = useRef(false);
   useEffect(() => {
     phaseRef.current = s?.phase ?? null;
+    hostOpenRef.current = hostOpen;
   });
   useEffect(() => {
     const hostCall = (body: Record<string, unknown>) =>
@@ -48,6 +51,9 @@ function Hub() {
         if (phase === "over") hostCall({ type: "lobby" });
       }
       if ((e.key === "s" || e.key === "S") && (phase === "reveal" || phase === "meeting")) hostCall({ type: "skip" });
+      const shortcut = ["h", "H", "s", "S", " ", "Escape"].includes(e.key);
+      const modifier = ["Shift", "Control", "Alt", "Meta"].includes(e.key) || e.ctrlKey || e.metaKey || e.altKey;
+      if (phase === "playing" && !shortcut && !modifier && !e.repeat && !hostOpenRef.current) hostCall({ type: "bell" });
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -281,6 +287,7 @@ function Haunting({ s, now }: { s: View; now: number }) {
   const pct = total ? done / total : 0;
   const souls = s.players.filter((p) => p.alive).length;
   const saved = s.bloodMoon.savedBy.length > 0 && now - s.bloodMoon.savedAt < 7000;
+  const bellIn = secondsLeft(s.bell.readyAt, now);
   return (
     <div style={{ display: "grid", gap: "2vh", justifyItems: "center" }}>
       <div style={{ position: "relative", width: "62vh", height: "62vh" }}>
@@ -296,6 +303,14 @@ function Haunting({ s, now }: { s: View; now: number }) {
       <p className="flavor" style={{ fontSize: "1.8vw", color: "var(--dim)" }}>Awaken every rune to break the curse…</p>
       <p style={{ fontSize: "1.8vw", color: "var(--dim)" }}>
         👥 {souls} player{souls === 1 ? "" : "s"} left · 💀 Found a body? Tap it on your phone.
+      </p>
+      <p style={{ fontSize: "1.8vw", color: bellIn > 0 || s.bell.left === 0 ? "var(--faint)" : "var(--candle)" }}>
+        🔔{" "}
+        {s.bell.left === 0
+          ? "The bell has rung its last."
+          : bellIn > 0
+            ? `The bell wakes in ${dur(bellIn)} · ${s.bell.left} left`
+            : `Press any key for an emergency meeting · ${s.bell.left} left`}
       </p>
       {saved && (
         <div className="overlay fade-in" style={{ background: "rgba(0,0,0,.82)", zIndex: 20 }}>

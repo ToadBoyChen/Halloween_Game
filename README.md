@@ -14,7 +14,7 @@ A physical, phone-driven social deduction game for a Halloween party. The hub (`
 - **Mortals** win when every Possessed is cast into the void, or every Mortal ritual is complete.
 - **The Possessed** win when living Possessed ≥ living Mortals, or when a Blood Moon isn't stopped in time.
 - **Killing:** the Possessed taps a Mortal on the shoulder and whispers "you're mine". The victim presses *I was killed* and lies down. Each kill restarts one shared cooldown for all Possessed (the app doesn't know who did it). It's shown on the Possessed's phones and works on the honor system.
-- **Séance:** started by *Found a Corpse* or *Ring the Bell* (one per player). Discussion → voting on phones → verdict.
+- **Séance:** started by *I found a body* on a phone, or by ringing the emergency bell: press any key on the TV laptop's keyboard (except Space, S and H). The bell can ring 5 times per game and sleeps for 2½ minutes after the game starts and after every meeting (both changeable in the host panel). Nobody knows who rang it. Discussion → voting on phones → verdict.
 - **Role reveal:** no timer. Everyone holds to see their role and taps *I'm ready*; the game starts when all players are ready (the host can skip).
 - **Blood Moon:** the Possessed summon it. Each Blood Moon uses two locations with a playing card at each. Anyone alive, even the Possessed, finds a card and taps it on their phone from 6 choices. One player can do both, or two can split up. A wrong pick locks that player out for 10s. When both are sealed the TV shows who saved everyone. Timings are in the host panel under **🌕 Blood Moon**.
 
@@ -44,9 +44,9 @@ Open `/admin` on your phone to run the game without touching the laptop:
 
 - **Game:** start, ⏭ skip timer (role reveal or any meeting stage), force a meeting, back to lobby, reset. Roles stay hidden until you tap **Show roles**, so you can play too.
 - **🌕 Blood Moon:** summon one now, cancel it, see the card answers, and change its settings (in the lobby).
-- **🤖 Bots (testing alone):** add bots, start as Possessed or Mortal, and make bots do tasks, kill, report, ring the bell, vote and stop the Blood Moon.
+- **🤖 Bots (testing alone):** add bots, start as Possessed or Mortal, and make bots do tasks, kill, report, vote and stop the Blood Moon.
 
-Every button is also a URL, e.g. `/api/admin?do=skip`. Actions: `start` (role, name), `skip`, `meeting`, `lobby`, `reset`, `ready`, `moon`, `cancelMoon`, `code`, `bots` (n), `clearbots`, `fast`, `role`, `cooldowns`, `bottasks` (pct), `botkill` (name), `botreport`, `botbell`, `botvote` (target = name | skip | random), `botseal`, `state`.
+Every button is also a URL, e.g. `/api/admin?do=skip`. Actions: `start` (role, name), `skip`, `meeting`, `lobby`, `reset`, `ready`, `moon`, `cancelMoon`, `code`, `bots` (n), `clearbots`, `fast`, `role`, `cooldowns`, `bottasks` (pct), `botkill` (name), `botreport`, `bell`, `botvote` (target = name | skip | random), `botseal`, `state`.
 
 There is no PIN, so don't share `/admin`, `/hub` or `/setup` with guests (they only need the QR code). Set `ADMIN_TOOLS=off` in Vercel to switch `/admin` off entirely.
 
@@ -55,6 +55,7 @@ There is no PIN, so don't share `/admin`, `/hub` or `/setup` with guests (they o
 - **Space:** start the game from the lobby, or play again after a game ends
 - **S:** skip the current timer (role reveal or meeting stage)
 - **H:** open host controls
+- **Any other key** (while playing): ring the emergency bell
 
 ## Local development
 
@@ -62,4 +63,4 @@ There is no PIN, so don't share `/admin`, `/hub` or `/setup` with guests (they o
 npm run dev
 ```
 
-Without Redis env vars it uses an in-memory store, and only 3 players are needed to start. To test a production build locally without Redis: `npm run build && POSSESSED_MEMORY_STORE=1 npm start`.
+Without Redis env vars it uses an in-memory store. To test a production build locally without Redis: `npm run build && POSSESSED_MEMORY_STORE=1 npm start`.

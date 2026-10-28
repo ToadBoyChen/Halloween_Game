@@ -48,6 +48,7 @@ function skipCooldowns(g: Game, now: number) {
   g.startedAt = Math.min(g.startedAt, now - g.settings.bloodMoonGrace * 1000 - 1);
   g.bloodMoon.lastEndedAt = 0;
   g.players.forEach((p) => (p.lastKillAt = now - g.settings.killCooldown * 1000 - 1));
+  if (g.bell) g.bell.readyAt = 0;
 }
 
 export function runAdmin(g: Game, a: AdminAction, now: number): unknown {
@@ -96,7 +97,7 @@ export function runAdmin(g: Game, a: AdminAction, now: number): unknown {
 
     case "cooldowns":
       skipCooldowns(g, now);
-      return { ok: true, note: "Kill cooldowns and the Blood Moon wait are cleared." };
+      return { ok: true, note: "Kill cooldowns, the bell cooldown and the Blood Moon wait are cleared." };
 
     case "moon":
       host(g, { type: "summonMoon" }, now);
@@ -122,12 +123,15 @@ export function runAdmin(g: Game, a: AdminAction, now: number): unknown {
       return { killed: victim!.name };
     }
 
-    case "botreport":
-    case "botbell": {
+    case "botreport": {
       const bot = pick(livingBots(g)) ?? fail("No living bots.");
-      act(g, bot, { type: a.do === "botreport" ? "report" : "bell" }, now);
+      act(g, bot, { type: "report" }, now);
       return { by: bot.name };
     }
+
+    case "bell":
+      host(g, { type: "bell" }, now);
+      return { ok: true };
 
     case "botvote": {
       if (g.phase !== "meeting" || g.meeting?.stage !== "voting") fail("Not in the voting stage. Use do=skip to get there.");

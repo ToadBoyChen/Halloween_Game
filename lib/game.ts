@@ -27,7 +27,6 @@ export type Player = {
   deathKnown: boolean; // revealed to everyone (at a séance or by ejection)
   ejected: boolean;
   tasks: { id: string; done: boolean }[];
-  bellsUsed: number;
   lastKillAt: number;
   bot?: boolean; // test bot (see lib/testing.ts)
   ready?: boolean; // pressed "I'm ready" after seeing their role
@@ -65,6 +64,8 @@ export type Game = {
     savedBy: string[]; // player ids who stopped the last Blood Moon
     savedAt: number;
   };
+  // The emergency bell is rung from the TV keyboard, so its limit and cooldown are shared.
+  bell: { used: number; readyAt: number };
   winner: { side: Role; reason: WinReason } | null;
 };
 
@@ -88,6 +89,7 @@ export function newGame(): Game {
     players: [],
     meeting: null,
     bloodMoon: freshMoon(),
+    bell: { used: 0, readyAt: 0 },
     winner: null,
   };
 }
@@ -220,6 +222,7 @@ export function advance(g: Game, now: number): boolean {
         g.meeting = null;
         g.phase = "playing";
         g.players.forEach((p) => (p.lastKillAt = now));
+        g.bell = { used: g.bell?.used ?? 0, readyAt: now + g.settings.bellCooldown * 1000 };
         checkAndEnd(g);
       }
     } else {
@@ -250,7 +253,6 @@ export function join(g: Game, name: string, color: string) {
     deathKnown: false,
     ejected: false,
     tasks: [],
-    bellsUsed: 0,
     lastKillAt: 0,
   };
   g.players.push(player);
@@ -262,7 +264,6 @@ export type Action =
   | { type: "task"; id: string; done: boolean }
   | { type: "claimed" }
   | { type: "report" }
-  | { type: "bell" }
   | { type: "vote"; target: string }
   | { type: "summon" }
   | { type: "ready" }
@@ -295,15 +296,10 @@ export function act(g: Game, p: Player, a: Action, now: number) {
       return;
 
     case "report":
-    case "bell":
       if (!playing) fail("Not now.");
       if (!p.alive) fail("Ghosts can't do that.");
       if (g.bloodMoon.active) fail("No meetings during the Blood Moon!");
-      if (a.type === "bell") {
-        if (p.bellsUsed >= g.settings.bellsPerPlayer) fail("You have no bells left.");
-        p.bellsUsed++;
-      }
-      startMeeting(g, a.type, p.id, now);
+      startMeeting(g, "report", p.id, now);
       return;
 
     case "vote": {
@@ -413,6 +409,7 @@ function beginHaunting(g: Game, now: number) {
   g.phaseEndsAt = 0;
   g.startedAt = now;
   g.players.forEach((p) => (p.lastKillAt = now));
+  g.bell = { used: 0, readyAt: now + g.settings.bellCooldown * 1000 };
 }
 
 // ─── Host actions ────────────────────────────────────────────
@@ -423,6 +420,7 @@ export type HostAction =
   | { type: "toggleRitual"; id: string }
   | { type: "kick"; id: string }
   | { type: "meeting" }
+  | { type: "bell" }
   | { type: "skip" }
   | { type: "cancelMoon" }
   | { type: "summonMoon" }
@@ -442,7 +440,6 @@ export function host(g: Game, a: HostAction, now: number) {
         p.alive = true;
         p.deathKnown = false;
         p.ejected = false;
-        p.bellsUsed = 0;
         p.lastKillAt = 0;
       }
       assignTasks(g);
@@ -481,6 +478,18 @@ export function host(g: Game, a: HostAction, now: number) {
       if (g.phase !== "playing") fail("Not now.");
       startMeeting(g, "host", null, now);
       return;
+
+    // Any key on the TV keyboard. Nobody knows who pressed it.
+    case "bell": {
+      if (g.phase !== "playing") fail("Not now.");
+      if (g.bloodMoon.active) fail("No meetings during the Blood Moon!");
+      const bell = g.bell ?? { used: 0, readyAt: 0 };
+      if (bell.used >= g.settings.bells) fail("The bell has rung its last.");
+      if (now < bell.readyAt) fail(`The bell is silent for ${Math.ceil((bell.readyAt - now) / 1000)}s more.`);
+      g.bell = { used: bell.used + 1, readyAt: bell.readyAt };
+      startMeeting(g, "bell", null, now);
+      return;
+    }
 
     case "skip":
       if (g.phase === "reveal") beginHaunting(g, now);
@@ -572,6 +581,10 @@ export function publicView(g: Game, now: number) {
       savedBy: (bm.savedBy ?? []).map(nameOf),
       savedAt: bm.savedAt ?? 0,
     },
+    bell: {
+      left: Math.max(0, g.settings.bells - (g.bell?.used ?? 0)),
+      readyAt: g.bell?.readyAt ?? 0,
+    },
     readyIds: g.phase === "reveal" ? g.players.filter((p) => p.ready).map((p) => p.id) : [],
     winner: over ? g.winner : null,
     rituals: RITUALS.map((r) => ({
@@ -594,7 +607,6 @@ export function playerView(g: Game, p: Player, now: number) {
       role: p.role,
       alive: p.alive,
       ejected: p.ejected,
-      bellsLeft: g.settings.bellsPerPlayer - p.bellsUsed,
       vote: g.meeting?.votes[p.id] ?? null,
       tasks: p.tasks.map((t) => {
         const r = ritual(t.id);

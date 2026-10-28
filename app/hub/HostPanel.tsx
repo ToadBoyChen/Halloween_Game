@@ -176,7 +176,8 @@ const GAME_NUMBERS: NumberSetting[] = [
   { key: "killCooldown", label: "Kill cooldown (s)", min: 10, max: 180, step: 5 },
   { key: "discussion", label: "Discussion (s)", min: 15, max: 300, step: 15 },
   { key: "voting", label: "Voting (s)", min: 15, max: 180, step: 15 },
-  { key: "bellsPerPlayer", label: "Bells per player", min: 0, max: 3, step: 1 },
+  { key: "bells", label: "Emergency meetings", min: 0, max: 10, step: 1 },
+  { key: "bellCooldown", label: "Bell cooldown (s)", min: 30, max: 300, step: 30 },
 ];
 
 const MOON_NUMBERS: NumberSetting[] = [
