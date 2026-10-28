@@ -1,11 +1,11 @@
 import { BLOOD_MOON } from "@/config/bloodmoon";
 import { SOUL_COLORS } from "@/config/game";
-import { act, host, join, GameError, progress, type Game, type Player, type Role } from "./game";
+import { act, host, join, GameError, progress, summonReadyAt, type Game, type Player, type Role } from "./game";
 
-// Test tools for trying the game alone on a live deployment: bot players,
-// bot actions, role forcing and time skips. Set TEST_TOOLS=off to disable.
+// Admin controls: run the game (start, skip timers, Blood Moon) and test it alone
+// with bot players. Used by the /admin page. Set ADMIN_TOOLS=off to disable.
 
-export type TestAction = {
+export type AdminAction = {
   do: string;
   n?: number; // how many bots
   name?: string; // which player (defaults to the only human)
@@ -50,7 +50,7 @@ function skipCooldowns(g: Game, now: number) {
   g.players.forEach((p) => (p.lastKillAt = now - g.settings.killCooldown * 1000 - 1));
 }
 
-export function runTest(g: Game, a: TestAction, now: number): unknown {
+export function runAdmin(g: Game, a: AdminAction, now: number): unknown {
   switch (a.do) {
     case "bots": {
       const n = Math.max(1, Math.min(Number(a.n ?? 5), 11));
@@ -89,6 +89,8 @@ export function runTest(g: Game, a: TestAction, now: number): unknown {
     case "skip":
     case "lobby":
     case "reset":
+    case "meeting":
+    case "cancelMoon":
       host(g, { type: a.do }, now);
       return { ok: true };
 
@@ -96,12 +98,9 @@ export function runTest(g: Game, a: TestAction, now: number): unknown {
       skipCooldowns(g, now);
       return { ok: true, note: "Kill cooldowns and the Blood Moon wait are cleared." };
 
-    case "moon": {
-      skipCooldowns(g, now);
-      const traitor = g.players.find((p) => p.role === "traitor") ?? fail("No Possessed in this game.");
-      act(g, traitor, { type: "summon" }, now);
+    case "moon":
+      host(g, { type: "summonMoon" }, now);
       return { ok: true, code: currentCode(g) };
-    }
 
     case "bottasks": {
       const pct = Math.max(0, Math.min(Number(a.pct ?? 100), 100)) / 100;
@@ -163,7 +162,7 @@ export function runTest(g: Game, a: TestAction, now: number): unknown {
       return { ok: true };
 
     default:
-      return fail(`Unknown test action "${a.do}".`);
+      return fail(`Unknown admin action "${a.do}".`);
   }
 }
 
@@ -173,17 +172,28 @@ function currentCode(g: Game) {
   return { code: seal.cards.map((c) => c.card).join(""), cards: seal.cards };
 }
 
-// Everything, including roles, for the test page. Tokens are left out.
+// Everything, including roles, for the admin page. Tokens are left out.
 export function debugView(g: Game) {
   const m = g.meeting;
+  const bm = g.bloodMoon;
+  const now = Date.now();
+  const nameOf = (id: string | null) => (id ? (g.players.find((p) => p.id === id)?.name ?? "Someone") : null);
   return {
     phase: g.phase,
     stage: m?.stage ?? null,
-    endsIn: Math.max(0, Math.round(((m?.endsAt ?? g.phaseEndsAt) - Date.now()) / 1000)),
+    endsIn: m ? Math.max(0, Math.round((m.endsAt - now) / 1000)) : 0,
     winner: g.winner,
     progress: progress(g),
-    bloodMoon: g.bloodMoon.active ? currentCode(g) : null,
+    settings: g.settings,
+    ready: g.players.filter((p) => p.ready).length,
     votes: m ? Object.keys(m.votes).length : 0,
+    bloodMoon: {
+      active: bm.active,
+      endsIn: bm.active ? Math.max(0, Math.round((bm.endsAt - now) / 1000)) : 0,
+      readyIn: g.phase === "playing" ? Math.max(0, Math.round((summonReadyAt(g) - now) / 1000)) : 0,
+      cards: bm.active ? BLOOD_MOON.seals[bm.seal].cards : [],
+      sealedBy: bm.active ? (bm.sealed ?? []).map(nameOf) : [],
+    },
     players: g.players.map((p) => ({
       name: p.name,
       bot: !!p.bot,

@@ -6,7 +6,7 @@ A physical, phone-driven social deduction game for a Halloween party. The hub (`
 
 1. Open `/hub` on the laptop and click to awaken the house (this unlocks sound and goes fullscreen).
 2. Players scan the QR code, pick a name and a soul color.
-3. Press **H** (or the ⛧ in the bottom-right corner) for host controls.
+3. Press **Space** to start. **H** (or the ⛧ in the bottom-right corner) opens host controls.
 4. Before the party, open `/setup` on your phone to walk the house: it lists every ritual by location and every Blood Moon card.
 
 ## Rules
@@ -34,18 +34,27 @@ The TV plays ambient sound plus every game event. Phones play only shared moment
 2. In the project, go to **Storage → Marketplace → Upstash Redis** and connect it. This adds `KV_REST_API_URL` and `KV_REST_API_TOKEN`.
 3. Redeploy.
 
-## Testing alone (live or local)
+## The Spirit Board (house desktop)
 
-Open `/test` on your phone. You can then:
+Open `/spirits` on a computer somewhere in the house and click to awaken it. Like vitals in Among Us, it shows every player as alive (glowing soul, beating heart line) or dead (flatline), **including kills nobody has reported yet**. A flatline tone plays when a soul departs. It never shows roles or who did it, and it goes dark during a Blood Moon. Players have to walk to it to use it, which makes lingering there suspicious.
 
-1. Join as yourself at `/play` (in another tab or on another device). Optionally open `/hub` on a laptop.
-2. Tap **Add 5 bots** (bots count toward the 6-player minimum) and **Fast timers**.
-3. Tap **Start: I'm Possessed** or **Start: I'm Mortal**.
-4. Use the bot buttons to do tasks, kill, report, ring the bell and vote. **Blood Moon now** skips the wait, and the page shows the card code.
+## Admin controls
 
-Every button is also a URL, e.g. `/api/test?do=bots&n=5`. Actions: `bots` (n), `clearbots`, `fast`, `start` (role, name), `role`, `skip`, `cooldowns`, `moon`, `code`, `bottasks` (pct), `botkill` (name), `botreport`, `botbell`, `botvote` (target = name | skip | random), `lobby`, `reset`, `state`.
+Open `/admin` on your phone to run the game without touching the laptop:
 
-There is no PIN: anyone who opens `/hub`, `/setup` or `/test` can use them. Set `TEST_TOOLS=off` in Vercel to switch the test tools off for the party (they reveal roles).
+- **Game:** start, ⏭ skip timer (role reveal or any meeting stage), force a meeting, back to lobby, reset. Roles stay hidden until you tap **Show roles**, so you can play too.
+- **🌕 Blood Moon:** summon one now, cancel it, see the card answers, and change its settings (in the lobby).
+- **🤖 Bots (testing alone):** add bots, start as Possessed or Mortal, and make bots do tasks, kill, report, ring the bell, vote and stop the Blood Moon.
+
+Every button is also a URL, e.g. `/api/admin?do=skip`. Actions: `start` (role, name), `skip`, `meeting`, `lobby`, `reset`, `ready`, `moon`, `cancelMoon`, `code`, `bots` (n), `clearbots`, `fast`, `role`, `cooldowns`, `bottasks` (pct), `botkill` (name), `botreport`, `botbell`, `botvote` (target = name | skip | random), `botseal`, `state`.
+
+There is no PIN, so don't share `/admin`, `/hub` or `/setup` with guests (they only need the QR code). Set `ADMIN_TOOLS=off` in Vercel to switch `/admin` off entirely.
+
+## TV keyboard shortcuts
+
+- **Space:** start the game from the lobby, or play again after a game ends
+- **S:** skip the current timer (role reveal or meeting stage)
+- **H:** open host controls
 
 ## Local development
 

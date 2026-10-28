@@ -814,3 +814,121 @@ button:disabled {
 .playing-card:disabled {
   opacity: 0.35;
 }
+
+/* ─── Spirit Board (desktop station) ────────────────────── */
+
+.spirit-tally {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.6em;
+  margin-top: 1.2vh;
+  padding: 0.35em 1.1em;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(10, 3, 5, 0.6);
+  font-size: clamp(0.9rem, 1.4vw, 1.4rem);
+  color: var(--dim);
+}
+.spirit-tally b {
+  font-size: 1.25em;
+}
+/* Column count comes from JS (--cols) so every soul fits on one screen. */
+.spirit-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--cols, 4), minmax(0, 1fr));
+  gap: clamp(10px, 1.6vw, 28px);
+  width: min(100%, calc(var(--cols, 4) * 300px));
+  min-height: 0;
+}
+.spirit {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(6px, 1.2vh, 14px);
+  min-width: 0;
+  padding: clamp(14px, 2.4vh, 28px) clamp(10px, 1.2vw, 20px) clamp(12px, 2vh, 22px);
+  border-color: color-mix(in srgb, var(--c) 30%, transparent);
+  background:
+    radial-gradient(ellipse at 50% 28%, color-mix(in srgb, var(--c) 16%, transparent), transparent 65%),
+    var(--panel);
+  overflow: hidden;
+  transition: border-color 0.6s, background 0.6s, filter 0.6s;
+}
+/* room for the soul's aura, which spills well past its box */
+.spirit .orb {
+  display: grid;
+  place-items: center;
+  width: var(--orb);
+  height: var(--orb);
+  margin: calc(var(--orb) * 0.2) 0 calc(var(--orb) * 0.12);
+}
+.spirit-name {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35em;
+  max-width: 100%;
+  font-size: clamp(1rem, 1.7vw, 1.9rem);
+  font-weight: 800;
+  line-height: 1.15;
+}
+.spirit-name span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.spirit-name .bot {
+  flex: none;
+  font-size: 0.7em;
+  opacity: 0.7;
+}
+.spirit-status {
+  font-size: clamp(0.75rem, 1.1vw, 1.1rem);
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #7fdc8a;
+}
+.spirit.gone {
+  border-color: rgba(255, 31, 61, 0.55);
+  background:
+    radial-gradient(ellipse at 50% 28%, rgba(255, 31, 61, 0.12), transparent 65%),
+    rgba(30, 0, 5, 0.8);
+  animation: spirit-depart 1.2s ease-out;
+}
+.spirit.gone .spirit-name {
+  color: var(--dim);
+  text-decoration: line-through;
+  text-decoration-color: rgba(255, 31, 61, 0.7);
+  text-decoration-thickness: 2px;
+}
+.spirit.gone .spirit-status {
+  color: var(--blood-bright);
+  text-shadow: 0 0 10px rgba(255, 31, 61, 0.6);
+}
+@keyframes spirit-depart {
+  0% { background: rgba(255, 31, 61, 0.55); filter: brightness(1.8); }
+  100% { filter: none; }
+}
+.ecg {
+  width: 100%;
+  height: clamp(22px, 4.5vh, 48px);
+}
+.ecg.beat path {
+  stroke-dasharray: 160;
+  animation: ecg 1.6s linear infinite;
+  filter: drop-shadow(0 0 3px #7fdc8a);
+}
+.ecg.flat path {
+  filter: drop-shadow(0 0 3px #ff1f3d);
+}
+@keyframes ecg {
+  from { stroke-dashoffset: 160; }
+  to { stroke-dashoffset: -160; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ecg.beat path { animation: none; }
+  .spirit.gone { animation: none; }
+}

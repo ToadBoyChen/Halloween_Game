@@ -77,12 +77,17 @@ function Controls({ s, call }: { s: View; call: Call }) {
         )}
         {(s.phase === "reveal" || s.phase === "meeting") && (
           <button className="btn" onClick={() => call({ type: "skip" })}>
-            Skip timer
+            ⏭ Skip timer (S)
+          </button>
+        )}
+        {s.phase === "playing" && s.settings.bloodMoon && !s.bloodMoon.active && (
+          <button className="btn" onClick={() => call({ type: "summonMoon" })}>
+            🌕 Summon Blood Moon now
           </button>
         )}
         {s.bloodMoon.active && (
           <button className="btn" onClick={() => call({ type: "cancelMoon" })}>
-            Cancel Blood Moon
+            ✋ Cancel Blood Moon
           </button>
         )}
         {s.phase === "over" && (
@@ -98,6 +103,15 @@ function Controls({ s, call }: { s: View; call: Call }) {
         <a className="btn ghost" href="/setup" target="_blank" style={{ textAlign: "center" }}>
           Ritual & card setup list ↗
         </a>
+        <a className="btn ghost" href="/spirits" target="_blank" style={{ textAlign: "center" }}>
+          Spirit Board (for the house desktop) ↗
+        </a>
+        <a className="btn ghost" href="/admin" target="_blank" style={{ textAlign: "center" }}>
+          Admin controls (for your phone) ↗
+        </a>
+        <p style={{ color: "var(--dim)", fontSize: ".9rem" }}>
+          Shortcuts: <strong>Space</strong> start / play again · <strong>S</strong> skip timer · <strong>H</strong> this panel
+        </p>
       </Section>
 
       <Section title={`Souls (${s.players.length})`}>

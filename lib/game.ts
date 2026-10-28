@@ -425,6 +425,7 @@ export type HostAction =
   | { type: "meeting" }
   | { type: "skip" }
   | { type: "cancelMoon" }
+  | { type: "summonMoon" }
   | { type: "lobby" }
   | { type: "reset" };
 
@@ -486,6 +487,15 @@ export function host(g: Game, a: HostAction, now: number) {
       else if (g.meeting) g.meeting.endsAt = now;
       advance(g, now);
       return;
+
+    case "summonMoon": {
+      if (g.phase !== "playing") fail("Not now.");
+      const traitor = g.players.find((p) => p.role === "traitor") ?? fail("No Possessed in this game.");
+      g.startedAt = Math.min(g.startedAt, now - g.settings.bloodMoonGrace * 1000 - 1);
+      g.bloodMoon.lastEndedAt = 0;
+      act(g, traitor, { type: "summon" }, now);
+      return;
+    }
 
     case "cancelMoon":
       if (g.bloodMoon.active) {
@@ -604,6 +614,26 @@ export function playerView(g: Game, p: Player, now: number) {
     },
   };
 }
+
+// The Spirit Board (a station on a desktop in the house), like Among Us vitals: who is
+// truly alive or dead, including kills nobody has reported. Never shows roles or killers.
+// It goes dark during a Blood Moon.
+export function spiritView(g: Game) {
+  const active = g.phase === "playing" || g.phase === "meeting" || g.phase === "over";
+  return {
+    phase: g.phase,
+    silenced: g.phase === "playing" && g.bloodMoon.active,
+    players: g.players.map((p) => ({
+      id: p.id,
+      name: p.name,
+      color: p.color,
+      alive: active ? p.alive : true,
+      ejected: active && p.ejected,
+    })),
+  };
+}
+
+export type SpiritView = ReturnType<typeof spiritView>;
 
 export type PublicView = ReturnType<typeof publicView>;
 export type PlayerView = ReturnType<typeof playerView>;

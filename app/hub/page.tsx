@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import QRCode from "qrcode";
 import { haunt } from "@/lib/audio";
 import { useEventSounds } from "@/lib/sounds";
-import { fmt, secondsLeft, useGame, useMounted, useOnChange, useTicker, type View } from "@/lib/client";
+import { fmt, post, secondsLeft, useGame, useMounted, useOnChange, useTicker, type View } from "@/lib/client";
 import { Atmos, deadText, Soul, SoulList, summonsText, verdictText, winText } from "@/components/shared";
 import { HostPanel } from "./HostPanel";
 
@@ -20,18 +20,38 @@ function Hub() {
   const [awake, setAwake] = useState(false);
   const [hostOpen, setHostOpen] = useState(false);
   const [scare, setScare] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
   useTicker(250);
   const now = serverNow();
 
+  // Keyboard shortcuts for the host: Space = start / play again, S = skip timer, H = host controls.
+  const phaseRef = useRef<string | null>(null);
   useEffect(() => {
+    phaseRef.current = s?.phase ?? null;
+  });
+  useEffect(() => {
+    const hostCall = (body: Record<string, unknown>) =>
+      post<View>("/api/host", body)
+        .then((v) => accept({ ...v, me: null }))
+        .catch((e: Error) => {
+          setToast(e.message);
+          setTimeout(() => setToast(null), 3500);
+        });
     const onKey = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement).tagName === "INPUT") return;
+      const phase = phaseRef.current;
       if (e.key === "h" || e.key === "H") setHostOpen((o) => !o);
       if (e.key === "Escape") setHostOpen(false);
+      if (e.key === " ") {
+        e.preventDefault();
+        if (phase === "lobby") hostCall({ type: "start" });
+        if (phase === "over") hostCall({ type: "lobby" });
+      }
+      if ((e.key === "s" || e.key === "S") && (phase === "reveal" || phase === "meeting")) hostCall({ type: "skip" });
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [accept]);
 
   // ── Sound cues ──
   const stage = s?.phase === "meeting" ? s.meeting?.stage ?? null : null;
@@ -135,6 +155,12 @@ function Hub() {
         </div>
       )}
 
+      {toast && (
+        <div className="panel shake" style={{ position: "fixed", top: 20, left: "50%", transform: "translateX(-50%)", zIndex: 50, padding: "14px 28px", fontSize: "1.6vw", fontWeight: 800, borderColor: "var(--blood-bright)" }}>
+          {toast}
+        </div>
+      )}
+
       {offline && (
         <p style={{ position: "fixed", top: 10, left: 0, right: 0, textAlign: "center", color: "var(--dim)", zIndex: 5 }}>
           The connection flickers…
@@ -201,6 +227,11 @@ function Lobby({ s }: { s: View }) {
         <p style={{ fontSize: "1.8vw", color: need ? "var(--dim)" : "var(--candle)" }}>
           {need ? `Need ${need} more player${need === 1 ? "" : "s"} to start` : `Ready! ${s.traitorCount} of you will be Possessed…`}
         </p>
+        {!need && (
+          <p className="flicker" style={{ fontSize: "1.6vw", color: "var(--dim)" }}>
+            Host: press <strong style={{ color: "var(--ink)" }}>Space</strong> to begin
+          </p>
+        )}
       </div>
     </div>
   );
@@ -541,7 +572,7 @@ function Over({ s }: { s: View }) {
           </div>
         ))}
       </div>
-      <p style={{ color: "var(--dim)", fontSize: "1.4vw" }}>Press H to play again</p>
+      <p style={{ color: "var(--dim)", fontSize: "1.4vw" }}>Press <strong>Space</strong> to play again</p>
     </div>
   );
 }

@@ -118,6 +118,28 @@ class Haunt {
     });
   }
 
+  // A heart monitor flatlining (the Spirit Board, when a soul departs).
+  flatline() {
+    if (!this.ctx) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime;
+    const beep = (at: number, len: number, vol: number) => {
+      const o = ctx.createOscillator();
+      o.frequency.value = 880;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0, at);
+      g.gain.linearRampToValueAtTime(vol, at + 0.01);
+      g.gain.setValueAtTime(vol, at + len - 0.3);
+      g.gain.linearRampToValueAtTime(0, at + len);
+      o.connect(g).connect(this.master);
+      o.start(at);
+      o.stop(at + len + 0.05);
+    };
+    beep(t, 0.12, 0.12);
+    beep(t + 0.5, 0.12, 0.12);
+    beep(t + 1.0, 3.2, 0.1); // the long flat tone
+  }
+
   // A single toll (voting begins).
   toll() {
     if (!this.ctx) return;
