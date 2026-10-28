@@ -4,8 +4,6 @@ import { useEffect, useState } from "react";
 import { useMounted } from "@/lib/client";
 import { Atmos } from "@/components/shared";
 
-const PIN_KEY = "possessed-pin";
-
 type Debug = {
   phase: string;
   stage: string | null;
@@ -24,17 +22,7 @@ export default function TestPage() {
   return mounted ? <Tools /> : <Atmos />;
 }
 
-function savedPin() {
-  try {
-    return localStorage.getItem(PIN_KEY) ?? "";
-  } catch {
-    return "";
-  }
-}
-
 function Tools() {
-  const [pin, setPin] = useState(savedPin);
-  const [authed, setAuthed] = useState(false);
   const [state, setState] = useState<Debug | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
 
@@ -42,12 +30,11 @@ function Tools() {
     const res = await fetch("/api/test", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ pin, ...params }),
+      body: JSON.stringify(params),
     });
     const data = await res.json();
     if (!res.ok) {
       setMsg(`⚠️ ${data.error}`);
-      if (res.status === 403) setAuthed(false);
       return;
     }
     if (params.do === "state") setState(data);
@@ -58,38 +45,20 @@ function Tools() {
     return true;
   };
 
+  // Refresh the summary every 2 seconds.
   useEffect(() => {
-    if (!authed) return;
-    const id = setInterval(() => call({ do: "state" }), 2000);
-    return () => clearInterval(id);
-  });
-
-  if (!authed) {
-    return (
-      <>
-        <Atmos />
-        <main className="screen phone" style={{ display: "grid", gap: 14, alignContent: "start", paddingTop: 40 }}>
-          <h1 className="creep blood" style={{ fontSize: "2.6rem" }}>Test Tools</h1>
-          <input className="input" type="password" inputMode="numeric" placeholder="Host PIN" value={pin} onChange={(e) => setPin(e.target.value)} />
-          <button
-            className="btn primary"
-            onClick={async () => {
-              if (await call({ do: "state" })) {
-                try {
-                  localStorage.setItem(PIN_KEY, pin);
-                } catch {}
-                setAuthed(true);
-                setMsg(null);
-              }
-            }}
-          >
-            Open
-          </button>
-          {msg && <p>{msg}</p>}
-        </main>
-      </>
-    );
-  }
+    const load = () =>
+      fetch("/api/test?do=state", { cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => d && setState(d))
+        .catch(() => {});
+    const first = setTimeout(load, 0);
+    const id = setInterval(load, 2000);
+    return () => {
+      clearTimeout(first);
+      clearInterval(id);
+    };
+  }, []);
 
   const btn = (label: string, params: Record<string, string | number>, primary = false) => (
     <button
@@ -149,7 +118,7 @@ function Tools() {
           {btn("Start: I'm Possessed", { do: "start", role: "traitor" }, true)}
           {btn("Start: I'm Mortal", { do: "start", role: "member" }, true)}
           {btn("Start: random", { do: "start" })}
-          {btn("Skip timer", { do: "skip" })}
+          {btn("Everyone ready", { do: "ready" })}
         </Group>
 
         <Group title="3. Playing">
@@ -161,6 +130,7 @@ function Tools() {
           {btn("Bot rings bell", { do: "botbell" })}
           {btn("Clear cooldowns", { do: "cooldowns" })}
           {btn("🌕 Blood Moon now", { do: "moon" }, true)}
+          {btn("Bot stops Blood Moon", { do: "botseal" })}
         </Group>
 
         <Group title="4. Meeting">
@@ -172,7 +142,7 @@ function Tools() {
 
         <p style={{ color: "var(--dim)", fontSize: ".85rem" }}>
           Every button here is also a URL:{" "}
-          <code>/api/test?pin=…&amp;do=bots&amp;n=5</code>
+          <code>/api/test?do=bots&amp;n=5</code>
         </p>
       </main>
     </>

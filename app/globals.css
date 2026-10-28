@@ -16,12 +16,15 @@
   --flavor-font: var(--font-flavor), Georgia, serif;
 }
 
+/* The document itself never scrolls: on phones that would collapse the address bar,
+   change 100dvh and make the layout jump. Screens scroll inside <main> if they must. */
 html,
 body {
   background: var(--bg);
   color: var(--ink);
   font-family: var(--body);
-  min-height: 100%;
+  height: 100%;
+  overflow: hidden;
   overscroll-behavior: none;
   -webkit-tap-highlight-color: transparent;
 }
@@ -145,7 +148,7 @@ button:disabled {
   animation: fade-in 1.4s ease both;
 }
 @keyframes fade-in {
-  from { opacity: 0; transform: translateY(8px); filter: blur(4px); }
+  from { opacity: 0; transform: scale(0.97); filter: blur(4px); }
   to { opacity: 1; transform: none; filter: none; }
 }
 
@@ -171,6 +174,7 @@ button:disabled {
   position: relative;
   display: inline-block;
   flex: none;
+  contain: layout;
   width: var(--s);
   height: var(--s);
 }
@@ -298,55 +302,6 @@ button:disabled {
   border-color: var(--blood-bright);
 }
 
-/* ─── Candles (the Seal) ────────────────────────────────── */
-
-.candle {
-  position: absolute;
-  width: 18px;
-  height: 64px;
-  transform: translate(-50%, -100%);
-}
-.candle .wax {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 48px;
-  border-radius: 4px 4px 2px 2px;
-  background: linear-gradient(90deg, #6e6255, #cfc3ad 45%, #8a7e6c);
-}
-.candle .wick {
-  position: absolute;
-  bottom: 48px;
-  left: 50%;
-  width: 2px;
-  height: 6px;
-  background: #222;
-  transform: translateX(-50%);
-}
-.candle .flame {
-  position: absolute;
-  bottom: 52px;
-  left: 50%;
-  width: 12px;
-  height: 22px;
-  transform: translateX(-50%);
-  border-radius: 50% 50% 35% 35% / 60% 60% 40% 40%;
-  background: radial-gradient(ellipse at 50% 75%, #fff6d0 0%, #ffcc55 30%, #ff7a1a 65%, transparent 72%);
-  filter: drop-shadow(0 0 12px #ff9a2a) drop-shadow(0 0 28px rgba(255, 120, 20, 0.6));
-  animation: flame 1.4s ease-in-out infinite alternate;
-  opacity: 0;
-  transition: opacity 0.8s;
-}
-.candle.lit .flame {
-  opacity: 1;
-}
-@keyframes flame {
-  0% { transform: translateX(-50%) scale(1, 1) rotate(-2deg); }
-  50% { transform: translateX(-52%) scale(0.92, 1.08) rotate(2deg); }
-  100% { transform: translateX(-48%) scale(1.04, 0.95) rotate(-1deg); }
-}
-
 /* ─── Blood moon ────────────────────────────────────────── */
 
 .moon {
@@ -364,7 +319,9 @@ button:disabled {
 .phone {
   max-width: 480px;
   margin: 0 auto;
-  min-height: 100dvh;
+  height: 100dvh;
+  overflow-x: clip;
+  overflow-y: auto;
   padding: 16px;
   user-select: none;
   -webkit-user-select: none;
@@ -550,7 +507,7 @@ button:disabled {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .fogbank, .ember, .eyes, .bat, .spider, .lightning, .grain, .glitch, .shake, .flicker, .soul * { animation: none !important; }
+  .fogbank, .ember, .eyes, .bat, .spider, .lightning, .grain, .glitch, .shake, .flicker, .soul *, .sigil-spin, .rune, .sigil-arc { animation: none !important; }
   .ember, .eyes, .bat, .spider, .lightning { display: none; }
 }
 
@@ -581,6 +538,7 @@ button:disabled {
 
 .picker {
   position: relative;
+  overflow-x: clip;
   display: grid;
   justify-items: center;
   gap: 8px;
@@ -648,6 +606,7 @@ button:disabled {
   max-width: 480px;
   margin: 0 auto;
   height: 100dvh;
+  overflow: clip;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -697,6 +656,7 @@ button:disabled {
 .tab-body {
   flex: 1;
   min-height: 0;
+  overflow-x: clip;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -794,4 +754,63 @@ button:disabled {
   .join-flavor { display: none; }
   .picker .stage { height: 132px; }
   .picker .arrow { top: 72px; }
+}
+
+/* ─── The Seal sigil (TV) ───────────────────────────────── */
+
+.sigil-spin {
+  transform-origin: 100px 100px;
+  animation: sigil-spin 180s linear infinite;
+}
+@keyframes sigil-spin {
+  to { transform: rotate(360deg); }
+}
+.rune.lit {
+  animation: rune-flicker 2.6s ease-in-out infinite alternate;
+}
+@keyframes rune-flicker {
+  0% { opacity: 1; }
+  40% { opacity: 0.75; }
+  55% { opacity: 1; }
+  100% { opacity: 0.85; }
+}
+.sigil-arc {
+  animation: rune-flicker 1.8s ease-in-out infinite alternate;
+}
+
+/* ─── Blood Moon card picker (phone) ────────────────────── */
+
+.moon-slot {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 14px;
+}
+.card-row {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 6px;
+}
+.playing-card {
+  aspect-ratio: 5 / 7;
+  max-height: 84px;
+  border-radius: 8px;
+  border: 1px solid #bbb;
+  background: linear-gradient(160deg, #fffdf6, #e8e0cc);
+  color: #111;
+  font-weight: 800;
+  font-size: 1.35rem;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
+  transition: transform 0.1s;
+}
+.playing-card.red {
+  color: #b3001b;
+}
+.playing-card:active:not(:disabled) {
+  transform: scale(0.92);
+}
+.playing-card:disabled {
+  opacity: 0.35;
 }

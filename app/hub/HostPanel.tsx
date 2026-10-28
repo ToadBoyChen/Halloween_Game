@@ -5,39 +5,18 @@ import { post, type View } from "@/lib/client";
 import { Soul } from "@/components/shared";
 import type { Settings } from "@/lib/game";
 
-const PIN_KEY = "possessed-pin";
-
-function savedPin() {
-  try {
-    return localStorage.getItem(PIN_KEY) ?? "";
-  } catch {
-    return "";
-  }
-}
-
 export function HostPanel({ s, onState, onClose }: { s: View; onState: (v: View) => void; onClose: () => void }) {
-  const [pin, setPin] = useState(savedPin);
-  const [authed, setAuthed] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const call = async (body: Record<string, unknown>) => {
     try {
       setError(null);
-      const v = await post<View>("/api/host", { pin, ...body });
-      if (body.type !== "check") onState({ ...v, me: null });
+      const v = await post<View>("/api/host", body);
+      onState({ ...v, me: null });
       return true;
     } catch (e) {
       setError((e as Error).message);
       return false;
-    }
-  };
-
-  const login = async () => {
-    if (await call({ type: "check" })) {
-      try {
-        localStorage.setItem(PIN_KEY, pin);
-      } catch {}
-      setAuthed(true);
     }
   };
 
@@ -70,29 +49,7 @@ export function HostPanel({ s, onState, onClose }: { s: View; onState: (v: View)
           </button>
         </div>
         {error && <p className="blood">{error}</p>}
-
-        {!authed ? (
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              login();
-            }}
-            style={{ display: "grid", gap: 10 }}
-          >
-            <input
-              className="input"
-              type="password"
-              inputMode="numeric"
-              placeholder="Host PIN"
-              value={pin}
-              onChange={(e) => setPin(e.target.value)}
-              autoFocus
-            />
-            <button className="btn primary">Enter</button>
-          </form>
-        ) : (
-          <Controls s={s} call={call} />
-        )}
+        <Controls s={s} call={call} />
       </aside>
     </div>
   );

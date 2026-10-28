@@ -6,7 +6,7 @@ A physical, phone-driven social deduction game for a Halloween party. The hub (`
 
 1. Open `/hub` on the laptop and click to awaken the house (this unlocks sound and goes fullscreen).
 2. Players scan the QR code, pick a name and a soul color.
-3. Press **H** (or the ⛧ in the bottom-right corner) for host controls. The PIN is `HOST_PIN`, default `1031`.
+3. Press **H** (or the ⛧ in the bottom-right corner) for host controls.
 4. Before the party, open `/setup` on your phone to walk the house: it lists every ritual by location and every Blood Moon card.
 
 ## Rules
@@ -15,7 +15,8 @@ A physical, phone-driven social deduction game for a Halloween party. The hub (`
 - **The Possessed** win when living Possessed ≥ living Mortals, or when a Blood Moon isn't stopped in time.
 - **Killing:** the Possessed taps a Mortal on the shoulder and whispers "you're mine". The victim presses *I was killed* and lies down. Each kill restarts one shared cooldown for all Possessed (the app doesn't know who did it). It's shown on the Possessed's phones and works on the honor system.
 - **Séance:** started by *Found a Corpse* or *Ring the Bell* (one per player). Discussion → voting on phones → verdict.
-- **Blood Moon:** the Possessed summon it; everyone has 60s (adjustable) to find the two cards and type both into the hub. Its timings are in the host panel under **🌕 Blood Moon**.
+- **Role reveal:** no timer. Everyone holds to see their role and taps *I'm ready*; the game starts when all players are ready (the host can skip).
+- **Blood Moon:** the Possessed summon it. Each Blood Moon uses two locations with a playing card at each. Anyone alive, even the Possessed, finds a card and taps it on their phone from 6 choices. One player can do both, or two can split up. A wrong pick locks that player out for 10s. When both are sealed the TV shows who saved everyone. Timings are in the host panel under **🌕 Blood Moon**.
 
 ## Sound
 
@@ -31,21 +32,20 @@ The TV plays ambient sound plus every game event. Phones play only shared moment
 
 1. Push to GitHub and import the project in Vercel.
 2. In the project, go to **Storage → Marketplace → Upstash Redis** and connect it. This adds `KV_REST_API_URL` and `KV_REST_API_TOKEN`.
-3. Optionally set `HOST_PIN`.
-4. Redeploy.
+3. Redeploy.
 
 ## Testing alone (live or local)
 
-Open `/test` on your phone and enter the host PIN. You can then:
+Open `/test` on your phone. You can then:
 
 1. Join as yourself at `/play` (in another tab or on another device). Optionally open `/hub` on a laptop.
 2. Tap **Add 5 bots** (bots count toward the 6-player minimum) and **Fast timers**.
 3. Tap **Start: I'm Possessed** or **Start: I'm Mortal**.
 4. Use the bot buttons to do tasks, kill, report, ring the bell and vote. **Blood Moon now** skips the wait, and the page shows the card code.
 
-Every button is also a URL, e.g. `/api/test?pin=1031&do=bots&n=5`. Actions: `bots` (n), `clearbots`, `fast`, `start` (role, name), `role`, `skip`, `cooldowns`, `moon`, `code`, `bottasks` (pct), `botkill` (name), `botreport`, `botbell`, `botvote` (target = name | skip | random), `lobby`, `reset`, `state`.
+Every button is also a URL, e.g. `/api/test?do=bots&n=5`. Actions: `bots` (n), `clearbots`, `fast`, `start` (role, name), `role`, `skip`, `cooldowns`, `moon`, `code`, `bottasks` (pct), `botkill` (name), `botreport`, `botbell`, `botvote` (target = name | skip | random), `lobby`, `reset`, `state`.
 
-Set `TEST_TOOLS=off` in Vercel to disable them for the party.
+There is no PIN: anyone who opens `/hub`, `/setup` or `/test` can use them. Set `TEST_TOOLS=off` in Vercel to switch the test tools off for the party (they reveal roles).
 
 ## Local development
 

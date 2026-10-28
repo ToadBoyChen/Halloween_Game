@@ -114,7 +114,7 @@ function Phone() {
       />
     );
   else if (s.phase === "lobby") content = <Lobby s={s} me={me} send={send} sound={sound} />;
-  else if (s.phase === "reveal") content = <Reveal s={s} me={me} now={now} />;
+  else if (s.phase === "reveal") content = <Reveal s={s} me={me} send={send} />;
   else if (s.phase === "meeting") content = <Meeting s={s} me={me} now={now} send={send} />;
   else if (s.phase === "over") content = <Over s={s} me={me} />;
   else content = <Playing s={s} me={me} now={now} send={send} sound={sound} />;
@@ -414,11 +414,14 @@ function holdProps(set: (v: boolean) => void) {
   };
 }
 
-function HoldToSee({ me, style }: { me: Me; style?: React.CSSProperties }) {
+function HoldToSee({ me, style, onSeen }: { me: Me; style?: React.CSSProperties; onSeen?: () => void }) {
   const [held, setHeld] = useState(false);
   return (
     <div
-      {...holdProps(setHeld)}
+      {...holdProps((v) => {
+        setHeld(v);
+        if (v) onSeen?.();
+      })}
       className="panel"
       style={{
         padding: 18,
@@ -444,12 +447,31 @@ function HoldToSee({ me, style }: { me: Me; style?: React.CSSProperties }) {
   );
 }
 
-function Reveal({ s, me, now }: { s: View; me: Me; now: number }) {
+// No timer: the game starts once every player has seen their role and tapped "I'm ready".
+function Reveal({ s, me, send }: { s: View; me: Me; send: Send }) {
+  const [seen, setSeen] = useState(false);
+  const readyCount = s.readyIds.length;
   return (
     <Center>
       <p className="flavor" style={{ fontSize: "1.2rem" }}>One among you is no longer… themselves.</p>
-      <HoldToSee me={me} style={{ width: "100%", minHeight: 360 }} />
-      <p style={{ color: "var(--dim)" }}>Starting in {secondsLeft(s.phaseEndsAt, now)}…</p>
+      <HoldToSee me={me} style={{ width: "100%", minHeight: 340 }} onSeen={() => setSeen(true)} />
+      {me.ready ? (
+        <p style={{ fontWeight: 800, fontSize: "1.2rem", color: "#7fdc8a" }}>
+          ✓ You&apos;re ready! Waiting for the others… ({readyCount}/{s.players.length})
+        </p>
+      ) : (
+        <button
+          className="btn primary"
+          disabled={!seen}
+          onClick={() => send({ type: "ready" })}
+          style={{ width: "100%", fontSize: "1.4rem", minHeight: 64 }}
+        >
+          {seen ? "✓ I'm ready" : "Hold the card above first"}
+        </button>
+      )}
+      <p style={{ color: "var(--dim)" }}>
+        {readyCount} of {s.players.length} players ready
+      </p>
     </Center>
   );
 }
@@ -494,15 +516,21 @@ function Playing({ s, me, now, send, sound }: { s: View; me: Me; now: number; se
         </div>
       </div>
 
-      {bm.active && (
+      {bm.active && !me.alive && (
         <div className="panel shake" style={{ padding: "10px 14px", borderColor: "var(--blood-bright)", display: "flex", alignItems: "center", gap: 12 }}>
           <span style={{ fontSize: "2.2rem" }}>🌕</span>
           <div style={{ flex: 1 }}>
-            <strong className="blood" style={{ fontSize: "1.15rem" }}>BLOOD MOON! Find the cards:</strong>
-            <div style={{ fontWeight: 800, color: "var(--candle)" }}>📍 {bm.locations.join("  +  📍 ")}</div>
-            <div style={{ fontSize: ".9rem" }}>Then type both into the TV.</div>
+            <strong className="blood" style={{ fontSize: "1.15rem" }}>BLOOD MOON!</strong>
+            <div style={{ fontSize: ".95rem" }}>Ghosts can&apos;t stop it. Watch quietly!</div>
           </div>
           <span className="creep blood" style={{ fontSize: "2.4rem" }}>{secondsLeft(bm.endsAt, now)}</span>
+        </div>
+      )}
+
+      {!bm.active && bm.savedBy.length > 0 && now - bm.savedAt < 7000 && (
+        <div className="panel fade-in" style={{ padding: "10px 14px", borderColor: "#7fdc8a", display: "flex", alignItems: "center", gap: 12 }}>
+          <span style={{ fontSize: "2.2rem" }}>🛡️</span>
+          <strong style={{ fontSize: "1.15rem", color: "#7fdc8a" }}>{bm.savedBy.join(" & ")} saved everyone!</strong>
         </div>
       )}
 
@@ -518,29 +546,35 @@ function Playing({ s, me, now, send, sound }: { s: View; me: Me; now: number; se
         </div>
       )}
 
-      <nav className="tabs" role="tablist">
-        {(
-          [
-            ["tasks", "📜", "Tasks", `${done}/${me.tasks.length}`],
-            ["actions", "⚡", "Actions", null],
-            ["role", "👁", "Role", null],
-          ] as const
-        ).map(([id, icon, label, badge]) => (
-          <button key={id} role="tab" aria-selected={tab === id} className={`tab ${tab === id ? "on" : ""}`} onClick={() => setTab(id)}>
-            <span style={{ fontSize: "1.4rem", lineHeight: 1 }}>{icon}</span>
-            <span>
-              {label}
-              {badge && <span className="badge">{badge}</span>}
-            </span>
-          </button>
-        ))}
-      </nav>
+      {bm.active && me.alive ? (
+        <BloodMoonPanel s={s} me={me} now={now} send={send} />
+      ) : (
+        <>
+          <nav className="tabs" role="tablist">
+            {(
+              [
+                ["tasks", "📜", "Tasks", `${done}/${me.tasks.length}`],
+                ["actions", "⚡", "Actions", null],
+                ["role", "👁", "Role", null],
+              ] as const
+            ).map(([id, icon, label, badge]) => (
+              <button key={id} role="tab" aria-selected={tab === id} className={`tab ${tab === id ? "on" : ""}`} onClick={() => setTab(id)}>
+                <span style={{ fontSize: "1.4rem", lineHeight: 1 }}>{icon}</span>
+                <span>
+                  {label}
+                  {badge && <span className="badge">{badge}</span>}
+                </span>
+              </button>
+            ))}
+          </nav>
 
-      <div className="tab-body">
-        {tab === "tasks" && <TasksTab me={me} send={send} />}
-        {tab === "actions" && <ActionsTab s={s} me={me} now={now} send={send} confirm={setConfirm} />}
-        {tab === "role" && <HoldToSee me={me} style={{ flex: 1 }} />}
-      </div>
+          <div className="tab-body">
+            {tab === "tasks" && <TasksTab me={me} send={send} />}
+            {tab === "actions" && <ActionsTab s={s} me={me} now={now} send={send} confirm={setConfirm} />}
+            {tab === "role" && <HoldToSee me={me} style={{ flex: 1 }} />}
+          </div>
+        </>
+      )}
 
       {confirm && (
         <div className="overlay fade-in">
@@ -565,6 +599,61 @@ function Playing({ s, me, now, send, sound }: { s: View; me: Me; now: number; se
         </div>
       )}
     </>
+  );
+}
+
+// Blood Moon: tap the card you found at each location. Anyone alive can do it,
+// one player can do both, or two players can split up.
+function BloodMoonPanel({ s, me, now, send }: { s: View; me: Me; now: number; send: Send }) {
+  const bm = s.bloodMoon;
+  const lockIn = secondsLeft(me.sealLockedUntil, now);
+  useOnChange(me.sealLockedUntil > now ? String(me.sealLockedUntil) : null, () => buzz([300, 100, 300]));
+  return (
+    <div className="tab-body">
+      <div className="panel" style={{ padding: "10px 14px", borderColor: "var(--blood-bright)", display: "flex", alignItems: "center", gap: 12 }}>
+        <span style={{ fontSize: "2.4rem" }}>🌕</span>
+        <div style={{ flex: 1 }}>
+          <strong className="blood" style={{ fontSize: "1.3rem" }}>BLOOD MOON!</strong>
+          <div style={{ fontWeight: 600 }}>Go find a card, then tap the card you saw.</div>
+        </div>
+        <span className="creep blood" style={{ fontSize: "2.8rem" }}>{secondsLeft(bm.endsAt, now)}</span>
+      </div>
+      {lockIn > 0 && (
+        <p key={me.sealLockedUntil} className="blood shake" style={{ textAlign: "center", fontWeight: 800, fontSize: "1.15rem" }}>
+          ❌ Wrong card! Try again in {lockIn}s
+        </p>
+      )}
+      {bm.locations.map((loc, i) => {
+        const by = bm.sealedBy[i];
+        return (
+          <section key={loc} className="panel moon-slot" style={{ borderColor: by ? "#7fdc8a" : undefined }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
+              <strong style={{ color: "var(--candle)", fontSize: "1.25rem" }}>📍 {loc}</strong>
+              {by && <span style={{ color: "#7fdc8a", fontWeight: 800 }}>✓ Sealed by {by}</span>}
+            </div>
+            {by ? (
+              <p style={{ color: "var(--dim)", fontWeight: 600 }}>This one is done!</p>
+            ) : (
+              <>
+                <p style={{ fontSize: ".95rem", color: "var(--dim)", fontWeight: 600 }}>Which card is at the {loc.toLowerCase()}?</p>
+                <div className="card-row">
+                  {(bm.options[i] ?? []).map((c, j) => (
+                    <button
+                      key={c}
+                      className={`playing-card ${j % 2 ? "red" : ""}`}
+                      disabled={lockIn > 0}
+                      onClick={() => send({ type: "seal", slot: i, card: c })}
+                    >
+                      {c}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </section>
+        );
+      })}
+    </div>
   );
 }
 

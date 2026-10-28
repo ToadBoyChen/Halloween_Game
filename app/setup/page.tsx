@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { post, useMounted } from "@/lib/client";
 import { Atmos } from "@/components/shared";
 import type { Ritual } from "@/config/rituals";
@@ -8,22 +8,17 @@ import type { BLOOD_MOON } from "@/config/bloodmoon";
 
 type Setup = { rituals: Ritual[]; bloodMoon: typeof BLOOD_MOON };
 
-// A checklist for walking the house before the party. PIN-protected because it shows the card codes.
+// A checklist for walking the house before the party (rituals and Blood Moon cards).
 export default function SetupPage() {
   const mounted = useMounted();
-  const [pin, setPin] = useState("");
   const [data, setData] = useState<Setup | null>(null);
   const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    post<Setup>("/api/host", { type: "setup" })
+      .then(setData)
+      .catch((e: Error) => setError(e.message));
+  }, []);
   if (!mounted) return <Atmos />;
-
-  const load = async () => {
-    try {
-      setError(null);
-      setData(await post<Setup>("/api/host", { pin, type: "setup" }));
-    } catch (e) {
-      setError((e as Error).message);
-    }
-  };
 
   const byLocation = new Map<string, Ritual[]>();
   for (const r of data?.rituals ?? []) byLocation.set(r.location, [...(byLocation.get(r.location) ?? []), r]);
@@ -34,17 +29,7 @@ export default function SetupPage() {
       <main className="screen phone" style={{ display: "grid", gap: 18, alignContent: "start" }}>
         <h1 className="creep blood" style={{ fontSize: "2.6rem" }}>House Setup</h1>
         {!data ? (
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              load();
-            }}
-            style={{ display: "grid", gap: 10 }}
-          >
-            <input className="input" type="password" inputMode="numeric" placeholder="Host PIN" value={pin} onChange={(e) => setPin(e.target.value)} />
-            <button className="btn primary">Open</button>
-            {error && <p className="blood">{error}</p>}
-          </form>
+          <p style={{ color: "var(--dim)" }}>{error ?? "Loading…"}</p>
         ) : (
           <>
             <section className="panel" style={{ padding: 16, display: "grid", gap: 12 }}>

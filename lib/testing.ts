@@ -3,7 +3,7 @@ import { SOUL_COLORS } from "@/config/game";
 import { act, host, join, GameError, progress, type Game, type Player, type Role } from "./game";
 
 // Test tools for trying the game alone on a live deployment: bot players,
-// bot actions, role forcing and time skips. Every call needs the host PIN.
+// bot actions, role forcing and time skips. Set TEST_TOOLS=off to disable.
 
 export type TestAction = {
   do: string;
@@ -145,6 +145,22 @@ export function runTest(g: Game, a: TestAction, now: number): unknown {
 
     case "code":
       return { code: currentCode(g) };
+
+    // A living bot finds and picks both Blood Moon cards.
+    case "botseal": {
+      if (!g.bloodMoon.active) fail("There is no Blood Moon right now.");
+      const bot = pick(livingBots(g)) ?? fail("No living bots.");
+      BLOOD_MOON.seals[g.bloodMoon.seal].cards.forEach((c, slot) => {
+        if (!g.bloodMoon.sealed[slot]) act(g, bot, { type: "seal", slot, card: c.card }, now);
+      });
+      return { savedBy: bot.name };
+    }
+
+    // Everyone still looking at their role becomes ready.
+    case "ready":
+      if (g.phase !== "reveal") fail("Not in the role reveal.");
+      g.players.filter((p) => !p.ready).forEach((p) => act(g, p, { type: "ready" }, now));
+      return { ok: true };
 
     default:
       return fail(`Unknown test action "${a.do}".`);

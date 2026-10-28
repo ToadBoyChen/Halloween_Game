@@ -20,7 +20,6 @@ export const DEFAULT_SETTINGS = {
 export const MIN_PLAYERS = 6;
 export const MAX_PLAYERS = 12;
 
-export const REVEAL_SECONDS = 10;
 export const SUMMONS_SECONDS = 6;
 export const VERDICT_SECONDS = 9;
 

@@ -4,7 +4,6 @@ import {
   DEFAULT_SETTINGS,
   MAX_PLAYERS,
   MIN_PLAYERS,
-  REVEAL_SECONDS,
   SOUL_COLORS,
   SUMMONS_SECONDS,
   VERDICT_SECONDS,
@@ -31,6 +30,7 @@ export type Player = {
   bellsUsed: number;
   lastKillAt: number;
   bot?: boolean; // test bot (see lib/testing.ts)
+  ready?: boolean; // pressed "I'm ready" after seeing their role
 };
 
 export type Meeting = {
@@ -59,7 +59,11 @@ export type Game = {
     seal: number;
     used: number[];
     lastEndedAt: number;
-    wrongAt: number;
+    options: string[][]; // card choices shown for each of the two locations
+    sealed: (string | null)[]; // who sealed each location (player id)
+    lockouts: Record<string, number>; // player id -> can try again at
+    savedBy: string[]; // player ids who stopped the last Blood Moon
+    savedAt: number;
   };
   winner: { side: Role; reason: WinReason } | null;
 };
@@ -83,7 +87,7 @@ export function newGame(): Game {
     disabled: RITUALS.filter((r) => r.enabled === false).map((r) => r.id),
     players: [],
     meeting: null,
-    bloodMoon: { active: false, endsAt: 0, seal: 0, used: [], lastEndedAt: 0, wrongAt: 0 },
+    bloodMoon: freshMoon(),
     winner: null,
   };
 }
@@ -200,11 +204,7 @@ function resolveVotes(g: Game, now: number) {
 export function advance(g: Game, now: number): boolean {
   let changed = false;
   for (let guard = 0; guard < 10; guard++) {
-    if (g.phase === "reveal" && now >= g.phaseEndsAt) {
-      g.phase = "playing";
-      g.startedAt = now;
-      g.players.forEach((p) => (p.lastKillAt = now));
-    } else if (g.phase === "playing" && g.bloodMoon.active && now >= g.bloodMoon.endsAt) {
+    if (g.phase === "playing" && g.bloodMoon.active && now >= g.bloodMoon.endsAt) {
       endGame(g, { side: "traitor", reason: "bloodmoon" });
     } else if (g.phase === "meeting" && g.meeting && now >= g.meeting.endsAt) {
       const m = g.meeting;
@@ -264,7 +264,9 @@ export type Action =
   | { type: "report" }
   | { type: "bell" }
   | { type: "vote"; target: string }
-  | { type: "summon" };
+  | { type: "summon" }
+  | { type: "ready" }
+  | { type: "seal"; slot: number; card: string };
 
 export function act(g: Game, p: Player, a: Action, now: number) {
   const playing = g.phase === "playing";
@@ -333,6 +335,39 @@ export function act(g: Game, p: Player, a: Action, now: number) {
       bm.used.push(bm.seal);
       bm.active = true;
       bm.endsAt = now + g.settings.bloodMoonDuration * 1000;
+      bm.options = BLOOD_MOON.seals[bm.seal].cards.map((c) => cardOptions(c.card));
+      bm.sealed = [null, null];
+      bm.lockouts = {};
+      bm.savedBy = [];
+      return;
+    }
+
+    case "ready":
+      if (g.phase !== "reveal") fail("Not now.");
+      p.ready = true;
+      if (g.players.every((x) => x.ready)) beginHaunting(g, now);
+      return;
+
+    // Pick the card found at one Blood Moon location. Anyone alive can do it, even the Possessed.
+    case "seal": {
+      const bm = g.bloodMoon;
+      if (!playing || !bm.active) fail("There is no Blood Moon right now.");
+      if (!p.alive) fail("Ghosts can't stop the Blood Moon.");
+      if (a.slot !== 0 && a.slot !== 1) fail("Pick a location.");
+      if (bm.sealed[a.slot]) fail("That one is already sealed!");
+      if ((bm.lockouts[p.id] ?? 0) > now) fail("Wrong card! Wait a moment before trying again.");
+      const card = BLOOD_MOON.seals[bm.seal].cards[a.slot].card;
+      if (normalize(card) !== normalize(a.card)) {
+        bm.lockouts[p.id] = now + BLOOD_MOON.wrongLockout * 1000;
+        return; // the phone sees the lockout and shows "wrong card"
+      }
+      bm.sealed[a.slot] = p.id;
+      if (bm.sealed.every(Boolean)) {
+        bm.active = false;
+        bm.lastEndedAt = now;
+        bm.savedBy = [...new Set(bm.sealed as string[])];
+        bm.savedAt = now;
+      }
       return;
     }
 
@@ -350,18 +385,34 @@ export function summonReadyAt(g: Game) {
 
 const normalize = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, "");
 
-// Entered at the hub. Returns true if the Blood Moon was stopped.
-export function altar(g: Game, code: string, now: number) {
-  if (g.phase !== "playing" || !g.bloodMoon.active) fail("There is no Blood Moon right now.");
-  const [a, b] = BLOOD_MOON.seals[g.bloodMoon.seal].cards.map((c) => normalize(c.card));
-  const input = normalize(code);
-  if (input === a + b || input === b + a) {
-    g.bloodMoon.active = false;
-    g.bloodMoon.lastEndedAt = now;
-    return true;
-  }
-  g.bloodMoon.wrongAt = now;
-  return false;
+const RANKS = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"];
+
+// The right card plus 5 decoys, shuffled.
+function cardOptions(card: string) {
+  const decoys = shuffle(RANKS.filter((r) => normalize(r) !== normalize(card))).slice(0, 5);
+  return shuffle([card, ...decoys]);
+}
+
+function freshMoon(): Game["bloodMoon"] {
+  return {
+    active: false,
+    endsAt: 0,
+    seal: 0,
+    used: [],
+    lastEndedAt: 0,
+    options: [],
+    sealed: [],
+    lockouts: {},
+    savedBy: [],
+    savedAt: 0,
+  };
+}
+
+function beginHaunting(g: Game, now: number) {
+  g.phase = "playing";
+  g.phaseEndsAt = 0;
+  g.startedAt = now;
+  g.players.forEach((p) => (p.lastKillAt = now));
 }
 
 // ─── Host actions ────────────────────────────────────────────
@@ -395,11 +446,12 @@ export function host(g: Game, a: HostAction, now: number) {
       }
       assignTasks(g);
       g.phase = "reveal";
-      g.phaseEndsAt = now + REVEAL_SECONDS * 1000;
+      g.phaseEndsAt = 0; // no timer: the game starts when everyone presses "I'm ready"
+      g.players.forEach((p) => (p.ready = !!p.bot));
       g.round++;
       g.meeting = null;
       g.winner = null;
-      g.bloodMoon = { active: false, endsAt: 0, seal: 0, used: [], lastEndedAt: 0, wrongAt: 0 };
+      g.bloodMoon = freshMoon();
       return;
     }
 
@@ -420,6 +472,7 @@ export function host(g: Game, a: HostAction, now: number) {
 
     case "kick":
       g.players = g.players.filter((p) => p.id !== a.id);
+      if (g.phase === "reveal" && g.players.every((p) => p.ready)) beginHaunting(g, now);
       if (g.phase === "playing" || g.phase === "meeting") checkAndEnd(g);
       return;
 
@@ -429,7 +482,7 @@ export function host(g: Game, a: HostAction, now: number) {
       return;
 
     case "skip":
-      if (g.phase === "reveal") g.phaseEndsAt = now;
+      if (g.phase === "reveal") beginHaunting(g, now);
       else if (g.meeting) g.meeting.endsAt = now;
       advance(g, now);
       return;
@@ -462,6 +515,7 @@ export function host(g: Game, a: HostAction, now: number) {
 // ─── Views (what each screen is allowed to see) ──────────────
 
 export function publicView(g: Game, now: number) {
+  const nameOf = (id: string) => g.players.find((p) => p.id === id)?.name ?? "Someone";
   const over = g.phase === "over";
   const m = g.meeting;
   const verdict = m?.stage === "verdict" && m.result;
@@ -503,8 +557,12 @@ export function publicView(g: Game, now: number) {
       active: bm.active,
       endsAt: bm.endsAt,
       locations: bm.active ? BLOOD_MOON.seals[bm.seal].cards.map((c) => c.location) : [],
-      wrongAt: bm.wrongAt,
+      options: bm.active ? (bm.options ?? []) : [],
+      sealedBy: bm.active ? (bm.sealed ?? []).map((id) => (id ? nameOf(id) : null)) : [],
+      savedBy: (bm.savedBy ?? []).map(nameOf),
+      savedAt: bm.savedAt ?? 0,
     },
+    readyIds: g.phase === "reveal" ? g.players.filter((p) => p.ready).map((p) => p.id) : [],
     winner: over ? g.winner : null,
     rituals: RITUALS.map((r) => ({
       id: r.id,
@@ -541,6 +599,8 @@ export function playerView(g: Game, p: Player, now: number) {
       allies: traitor ? g.players.filter((x) => x.role === "traitor" && x.id !== p.id).map((x) => x.name) : [],
       killReadyAt: traitor ? p.lastKillAt + g.settings.killCooldown * 1000 : 0,
       summonReadyAt: traitor && g.settings.bloodMoon ? summonReadyAt(g) : 0,
+      ready: !!p.ready,
+      sealLockedUntil: g.bloodMoon.lockouts?.[p.id] ?? 0,
     },
   };
 }

@@ -14,5 +14,3 @@ export function handle(fn: () => Promise<Response>) {
     return Response.json({ error: message }, { status: 500 });
   });
 }
-
-export const hostPin = () => process.env.HOST_PIN ?? "1031";

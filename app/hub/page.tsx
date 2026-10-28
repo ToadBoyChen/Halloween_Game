@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import QRCode from "qrcode";
 import { haunt } from "@/lib/audio";
 import { useEventSounds } from "@/lib/sounds";
-import { fmt, post, secondsLeft, useGame, useMounted, useOnChange, useTicker, type View } from "@/lib/client";
+import { fmt, secondsLeft, useGame, useMounted, useOnChange, useTicker, type View } from "@/lib/client";
 import { Atmos, deadText, Soul, SoulList, summonsText, verdictText, winText } from "@/components/shared";
 import { HostPanel } from "./HostPanel";
 
@@ -117,15 +117,15 @@ function Hub() {
         ) : s.phase === "lobby" ? (
           <Lobby s={s} />
         ) : s.phase === "reveal" ? (
-          <Reveal s={s} now={now} />
+          <Reveal s={s} />
         ) : s.phase === "meeting" ? (
           <Seance s={s} now={now} />
         ) : s.phase === "over" ? (
           <Over s={s} />
         ) : moon ? (
-          <BloodMoon s={s} now={now} onState={accept} />
+          <BloodMoon s={s} now={now} />
         ) : (
-          <Haunting s={s} />
+          <Haunting s={s} now={now} />
         )}
       </main>
 
@@ -206,140 +206,225 @@ function Lobby({ s }: { s: View }) {
   );
 }
 
-// ─── Reveal ──────────────────────────────────────────────────
+// ─── Reveal: waits until everyone presses "I'm ready" ────────
 
-function Reveal({ s, now }: { s: View; now: number }) {
+function Reveal({ s }: { s: View }) {
+  const ready = new Set(s.readyIds);
   return (
-    <div style={{ display: "grid", gap: "4vh" }}>
-      <h1 className="creep blood fade-in" style={{ fontSize: "5.5vw", lineHeight: 1.1 }}>
+    <div style={{ display: "grid", gap: "3.5vh", width: "100%" }}>
+      <h1 className="creep blood fade-in" style={{ fontSize: "5.2vw", lineHeight: 1.1 }}>
         One among you is no longer…
         <br />
         <span className="glitch" style={{ display: "inline-block" }}>themselves</span>
       </h1>
-      <p className="fade-in" style={{ fontSize: "2.4vw", animationDelay: "1.5s" }}>
-        📱 Look at your phone! Press and hold to see your role. Keep it secret!
+      <p className="fade-in" style={{ fontSize: "2.4vw", animationDelay: "1.2s" }}>
+        📱 Look at your phone! Hold to see your role, then tap <strong>I&apos;m ready</strong>.
       </p>
-      <p className="fade-in" style={{ fontSize: "2vw", color: "var(--dim)", animationDelay: "2.5s" }}>
-        {s.traitorCount} Possessed among you · Starting in {secondsLeft(s.phaseEndsAt, now)}
+      <div className="panel" style={{ padding: "3vh 2vw" }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "2.4vw", justifyContent: "center" }}>
+          {s.players.map((p) => (
+            <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 12, fontSize: "2vw", opacity: ready.has(p.id) ? 1 : 0.45 }}>
+              <Soul color={p.color} size={30} />
+              {p.name}
+              <span style={{ color: ready.has(p.id) ? "#7fdc8a" : "var(--dim)" }}>{ready.has(p.id) ? "✓" : "…"}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+      <p style={{ fontSize: "2vw", color: "var(--dim)" }}>
+        {ready.size} of {s.players.length} ready · {s.traitorCount} Possessed among you
       </p>
     </div>
   );
 }
 
-// ─── Haunting: the Seal of candles ───────────────────────────
+// ─── Haunting: the Seal sigil ────────────────────────────────
 
-const CANDLES = 13;
+const RUNES = "ᚠᚢᚦᚨᚱᚲᚷᚹᚺᚾᛁᛃᛇᛈᛉᛊᛏᛒᛖᛗᛚᛜᛞᛟ".split("");
+const RUNE_COUNT = 13;
 
-function Haunting({ s }: { s: View }) {
+function Haunting({ s, now }: { s: View; now: number }) {
   const { done, total } = s.progress;
   const pct = total ? done / total : 0;
-  const lit = Math.floor(pct * CANDLES + 1e-9);
   const souls = s.players.filter((p) => p.alive).length;
+  const saved = s.bloodMoon.savedBy.length > 0 && now - s.bloodMoon.savedAt < 7000;
   return (
     <div style={{ display: "grid", gap: "2vh", justifyItems: "center" }}>
-      <div style={{ position: "relative", width: "60vh", height: "60vh" }}>
-        {/* pentagram-ish circle */}
-        <svg viewBox="0 0 100 100" style={{ position: "absolute", inset: 0, opacity: 0.35 + pct * 0.5 }}>
-          <circle cx="50" cy="50" r="46" fill="none" stroke="#b3001b" strokeWidth="0.6" />
-          <circle cx="50" cy="50" r="42" fill="none" stroke="#b3001b" strokeWidth="0.3" />
-          <polygon
-            points={star()}
-            fill="none"
-            stroke={pct >= 1 ? "#ffcc55" : "#b3001b"}
-            strokeWidth="0.5"
-          />
-        </svg>
-        {Array.from({ length: CANDLES }, (_, i) => {
-          const a = (i / CANDLES) * Math.PI * 2 - Math.PI / 2;
-          return (
-            <div
-              key={i}
-              className={`candle ${i < lit ? "lit" : ""}`}
-              style={{ left: `${50 + Math.cos(a) * 46}%`, top: `${50 + Math.sin(a) * 46 + 4}%` }}
-            >
-              <div className="flame" style={{ animationDelay: `${i * 0.17}s` }} />
-              <div className="wick" />
-              <div className="wax" />
-            </div>
-          );
-        })}
-        <div style={{ position: "absolute", inset: 0, display: "grid", placeContent: "center", gap: "1vh" }}>
-          <p className="creep glow" style={{ fontSize: "4vw", color: "var(--candle)" }}>{Math.round(pct * 100)}%</p>
+      <div style={{ position: "relative", width: "62vh", height: "62vh" }}>
+        <Sigil pct={pct} />
+        <div style={{ position: "absolute", inset: 0, display: "grid", placeContent: "center", gap: "0.5vh" }}>
+          <p className="creep glow" style={{ fontSize: "4.4vw", color: pct >= 1 ? "#ffe08a" : "var(--candle)", lineHeight: 1 }}>
+            {Math.round(pct * 100)}%
+          </p>
           <p style={{ fontSize: "1.6vw", color: "var(--dim)" }}>Tasks done</p>
         </div>
       </div>
       <h2 className="creep" style={{ fontSize: "3.4vw" }}>Do your tasks. Find the Possessed.</h2>
-      <p className="flavor" style={{ fontSize: "1.8vw", color: "var(--dim)" }}>Light every candle to break the curse…</p>
+      <p className="flavor" style={{ fontSize: "1.8vw", color: "var(--dim)" }}>Awaken every rune to break the curse…</p>
       <p style={{ fontSize: "1.8vw", color: "var(--dim)" }}>
         👥 {souls} player{souls === 1 ? "" : "s"} left · 💀 Found a body? Tap it on your phone.
       </p>
+      {saved && (
+        <div className="overlay fade-in" style={{ background: "rgba(0,0,0,.82)", zIndex: 20 }}>
+          <div style={{ fontSize: "9vw", lineHeight: 1 }}>🛡️</div>
+          <h1 className="creep glow" style={{ fontSize: "6vw", color: "var(--candle)", lineHeight: 1.1 }}>
+            {s.bloodMoon.savedBy.join(" & ")} saved everyone!
+          </h1>
+          <p className="flavor" style={{ fontSize: "2.6vw" }}>The Blood Moon wanes… for now.</p>
+        </div>
+      )}
     </div>
   );
 }
 
-function star() {
-  const pts = [];
-  for (let i = 0; i < 5; i++) {
-    const a = ((i * 2) / 5) * Math.PI * 2 - Math.PI / 2;
-    pts.push(`${50 + Math.cos(a) * 42},${50 + Math.sin(a) * 42}`);
-  }
-  return pts.join(" ");
+// A turning ring of runes that ignite as tasks are done, a fiery arc filling the circle,
+// and a pentagram whose five lines light up at every 20%.
+function Sigil({ pct }: { pct: number }) {
+  const lit = Math.floor(pct * RUNE_COUNT + 1e-9);
+  const complete = pct >= 1;
+  const arc = 2 * Math.PI * 76;
+  const pt = (r: number, i: number, n: number) => {
+    // point i of n around a circle of radius r, starting at the top
+    const a = (i / n) * Math.PI * 2 - Math.PI / 2;
+    return [100 + Math.cos(a) * r, 100 + Math.sin(a) * r];
+  };
+  const star = [0, 2, 4, 1, 3].map((i) => pt(62, i, 5));
+  return (
+    <svg viewBox="0 0 200 200" style={{ position: "absolute", inset: 0, overflow: "visible" }}>
+      <defs>
+        <filter id="fire-glow" x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur stdDeviation="2.2" result="b" />
+          <feMerge>
+            <feMergeNode in="b" />
+            <feMergeNode in="b" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+        <radialGradient id="sigil-core">
+          <stop offset="0%" stopColor={complete ? "#5a3a00" : "#3a0008"} stopOpacity={0.25 + pct * 0.5} />
+          <stop offset="70%" stopColor="#000" stopOpacity="0" />
+        </radialGradient>
+        <linearGradient id="fire" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="#ffdf7a" />
+          <stop offset="50%" stopColor="#ff8a1f" />
+          <stop offset="100%" stopColor="#c1121f" />
+        </linearGradient>
+      </defs>
+
+      <circle cx="100" cy="100" r="96" fill="url(#sigil-core)" />
+
+      {/* turning outer ring of runes and ticks */}
+      <g className="sigil-spin">
+        <circle cx="100" cy="100" r="96" fill="none" stroke="#5a0a14" strokeWidth="0.5" />
+        <circle cx="100" cy="100" r="84" fill="none" stroke="#5a0a14" strokeWidth="0.5" />
+        {Array.from({ length: 72 }, (_, i) => {
+          const [x1, y1] = pt(96, i, 72);
+          const [x2, y2] = pt(i % 6 === 0 ? 91 : 93.5, i, 72);
+          return <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#5a0a14" strokeWidth="0.5" />;
+        })}
+        {Array.from({ length: RUNE_COUNT }, (_, i) => {
+          const [x, y] = pt(90, i, RUNE_COUNT);
+          const on = i < lit;
+          return (
+            <text
+              key={i}
+              x={x}
+              y={y}
+              textAnchor="middle"
+              dominantBaseline="central"
+              fontSize="11"
+              fontWeight="700"
+              className={on ? "rune lit" : "rune"}
+              fill={on ? (complete ? "#ffe08a" : "#ffb347") : "#5c1420"}
+              filter={on ? "url(#fire-glow)" : undefined}
+              style={{ animationDelay: `${i * 0.37}s` }}
+              transform={`rotate(${(i / RUNE_COUNT) * 360} ${x} ${y})`}
+            >
+              {RUNES[(i * 7) % RUNES.length]}
+            </text>
+          );
+        })}
+      </g>
+
+      {/* progress arc */}
+      <circle cx="100" cy="100" r="76" fill="none" stroke="#2a0509" strokeWidth="3" />
+      <circle
+        cx="100"
+        cy="100"
+        r="76"
+        fill="none"
+        stroke="url(#fire)"
+        strokeWidth="3"
+        strokeLinecap="round"
+        strokeDasharray={`${arc * pct} ${arc}`}
+        transform="rotate(-90 100 100)"
+        filter="url(#fire-glow)"
+        className="sigil-arc"
+        style={{ transition: "stroke-dasharray 1.2s ease" }}
+      />
+
+      {/* pentagram: one line ignites per 20% */}
+      <circle cx="100" cy="100" r="62" fill="none" stroke="#4a0a12" strokeWidth="0.6" />
+      {star.map(([x1, y1], i) => {
+        const [x2, y2] = star[(i + 1) % 5];
+        const on = pct >= (i + 1) / 5;
+        return (
+          <line
+            key={i}
+            x1={x1}
+            y1={y1}
+            x2={x2}
+            y2={y2}
+            stroke={on ? (complete ? "#ffe08a" : "#ff9a2a") : "#4a0a12"}
+            strokeWidth={on ? 1.4 : 0.7}
+            strokeLinecap="round"
+            filter={on ? "url(#fire-glow)" : undefined}
+            className={on ? "rune lit" : undefined}
+          />
+        );
+      })}
+
+      {/* dark disc so the percentage stays readable over the star */}
+      <circle cx="100" cy="100" r="30" fill="#050203" opacity="0.85" />
+      <circle cx="100" cy="100" r="30" fill="none" stroke={complete ? "#ffe08a" : "#5a0a14"} strokeWidth="0.6" />
+    </svg>
+  );
 }
 
-// ─── Blood Moon + altar ──────────────────────────────────────
+// ─── Blood Moon ──────────────────────────────────────────────
 
-function BloodMoon({ s, now, onState }: { s: View; now: number; onState: (v: View) => void }) {
-  const [code, setCode] = useState("");
-  const [wrong, setWrong] = useState(0);
-  const input = useRef<HTMLInputElement>(null);
-  const left = secondsLeft(s.bloodMoon.endsAt, now);
-
-  useEffect(() => {
-    input.current?.focus();
-  });
-
-  const submit = async () => {
-    if (!code.trim()) return;
-    try {
-      const r = await post<{ correct: boolean; state: View }>("/api/altar", { code });
-      setCode("");
-      if (!r.correct) setWrong((w) => w + 1);
-      onState({ ...r.state, me: null });
-    } catch {
-      setWrong((w) => w + 1);
-    }
-  };
-
+function BloodMoon({ s, now }: { s: View; now: number }) {
+  const bm = s.bloodMoon;
+  const left = secondsLeft(bm.endsAt, now);
   return (
-    <div style={{ display: "grid", justifyItems: "center", gap: "2.5vh" }}>
-      <div className="moon" style={{ width: "22vh", height: "22vh" }} />
+    <div style={{ display: "grid", justifyItems: "center", gap: "2.5vh", width: "100%" }}>
+      <div className="moon" style={{ width: "20vh", height: "20vh" }} />
       <h1 className="creep blood shake" style={{ fontSize: "6vw", lineHeight: 1 }}>Blood Moon!</h1>
-      <p className="creep blood" style={{ fontSize: "9vw", lineHeight: 1 }}>{left}</p>
-      <p style={{ fontSize: "2.4vw" }}>
-        Find the 2 cards at{" "}
-        <strong style={{ color: "var(--candle)" }}>📍 {s.bloodMoon.locations.join("  +  📍 ")}</strong>
-        <br />then type both cards here
-      </p>
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          submit();
-        }}
-        style={{ display: "flex", gap: 12, width: "50vw" }}
-      >
-        <input
-          ref={input}
-          key={wrong}
-          className={`input ${wrong ? "shake" : ""}`}
-          value={code}
-          onChange={(e) => setCode(e.target.value)}
-          placeholder="Type the 2 cards, like A10"
-          autoComplete="off"
-          style={{ fontSize: "2.4vw", textAlign: "center", textTransform: "uppercase" }}
-        />
-        <button className="btn primary" style={{ fontSize: "2vw", padding: "0 2vw" }}>Enter</button>
-      </form>
-      {wrong > 0 && <p className="blood" style={{ fontSize: "2vw" }}>❌ Wrong! Try again — hurry!</p>}
+      <p className="creep blood" style={{ fontSize: "8vw", lineHeight: 1 }}>{left}</p>
+      <p style={{ fontSize: "2.4vw", fontWeight: 800 }}>Find the cards and pick them on your phone!</p>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "2vw", width: "70vw" }}>
+        {bm.locations.map((loc, i) => {
+          const by = bm.sealedBy[i];
+          return (
+            <div
+              key={loc}
+              className="panel"
+              style={{
+                padding: "2.5vh 2vw",
+                display: "grid",
+                gap: "1vh",
+                borderColor: by ? "#7fdc8a" : "var(--blood-bright)",
+                boxShadow: by ? "0 0 30px rgba(127,220,138,.25) inset" : undefined,
+              }}
+            >
+              <span style={{ fontSize: "2.6vw", fontWeight: 800, color: "var(--candle)" }}>📍 {loc}</span>
+              <span style={{ fontSize: "2.2vw", fontWeight: 800, color: by ? "#7fdc8a" : "var(--dim)" }}>
+                {by ? `✓ Sealed by ${by}` : "❓ Not found yet"}
+              </span>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
