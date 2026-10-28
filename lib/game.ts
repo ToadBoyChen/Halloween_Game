@@ -92,7 +92,7 @@ export function newGame(): Game {
   };
 }
 
-const minPlayers = () => (process.env.NODE_ENV === "development" ? 3 : MIN_PLAYERS);
+const minPlayers = () => MIN_PLAYERS;
 
 export function traitorCount(g: Game) {
   const n = g.players.length;

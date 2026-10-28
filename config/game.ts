@@ -2,7 +2,7 @@ import { BLOOD_MOON } from "./bloodmoon";
 
 // Defaults for the lobby settings (the host can change them on the hub).
 export const DEFAULT_SETTINGS = {
-  traitors: 0, // 0 = auto (1 for 6–7 players, 2 for 8+)
+  traitors: 0, // 0 = auto (1 for 3–7 players, 2 for 8+)
   tasksPerPlayer: 4,
   killCooldown: 45, // seconds
   discussion: 90, // seconds
@@ -16,8 +16,8 @@ export const DEFAULT_SETTINGS = {
   scares: true, // occasional jump-scare flashes on the TV
 };
 
-// Minimum souls before the host can start (relaxed to 3 in local dev for testing).
-export const MIN_PLAYERS = 6;
+// Minimum souls before the host can start.
+export const MIN_PLAYERS = 3;
 export const MAX_PLAYERS = 12;
 
 export const SUMMONS_SECONDS = 6;
