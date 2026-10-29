@@ -106,7 +106,7 @@ export function BodiesFound({ s, big = false }: { s: View; big?: boolean }) {
           <span className="tomb-skull">💀</span>
           <span>
             <strong>{p.name}</strong>
-            <small>found by {p.foundBy ?? "the house"}</small>
+            <small>{p.selfReported ? "reported their own death" : `found by ${p.foundBy ?? "the house"}`}</small>
           </span>
         </div>
       ))}

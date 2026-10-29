@@ -107,6 +107,10 @@ function Hub() {
   useOnChange(s && s.phase !== "lobby" ? `p${s.round}:${s.progress.done}` : null, (k) => {
     if (!k.endsWith(":0")) haunt.chime();
   });
+  // Someone reported their own death. Just the sound: who it was waits for the next meeting.
+  useOnChange(awake && s && s.phase !== "lobby" ? `d${s.round}:${s.selfDeaths}` : null, (k) => {
+    if (!k.endsWith(":0")) haunt.knell();
+  });
   // No background noise: only the Blood Moon has a sound bed (siren and heartbeat).
   const moon = !!s?.bloodMoon.active;
   useEffect(() => {

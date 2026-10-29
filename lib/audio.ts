@@ -130,6 +130,27 @@ class Haunt {
     }
   }
 
+  // A deep double knell (someone reported their own death).
+  knell() {
+    if (!this.ctx) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime;
+    for (const [at, base] of [[0, 147], [1.2, 131]]) {
+      for (const [ratio, amp] of [[1, 0.45], [2.01, 0.18], [2.76, 0.12], [0.5, 0.35]]) {
+        const o = ctx.createOscillator();
+        o.frequency.value = base * ratio;
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0, t + at);
+        g.gain.linearRampToValueAtTime(amp * 0.7, t + at + 0.01);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + at + 3);
+        o.connect(g).connect(this.master);
+        o.start(t + at);
+        o.stop(t + at + 3.1);
+      }
+    }
+    this.thump(t, 0.8);
+  }
+
   private noiseBuffer(seconds = 2) {
     const ctx = this.ctx!;
     const buf = ctx.createBuffer(1, ctx.sampleRate * seconds, ctx.sampleRate);

@@ -82,6 +82,7 @@ export type Game = {
     halves: Record<string, 0 | 1>; // player id -> which half of the code their phone shows
     savedAt: number; // when the code was last typed in time
   };
+  selfDeaths?: number; // how many players have reported their own death this game (the TV plays a sound for each)
   meetingsReadyAt: number; // nobody can call a meeting before this
   lastMeetingAt: number; // when play last started or resumed
   winner: { side: Role; reason: WinReason } | null;
@@ -199,8 +200,9 @@ function answerOptions(r: Ritual) {
 const poolOf = (g: Game) => g.pool ?? [];
 
 // Who holds a ritual right now. Claims lapse after the timeout so nobody can sit on one.
+// The clock stops during meetings (it restarts when play resumes).
 function holder(g: Game, e: PoolRitual, now: number) {
-  return e.claimedBy && now - e.claimedAt < g.settings.claimTimeout * 1000 ? e.claimedBy : null;
+  return e.claimedBy && (g.phase === "meeting" || now - e.claimedAt < g.settings.claimTimeout * 1000) ? e.claimedBy : null;
 }
 
 // The ritual this one waits on, if it's in the pool.
@@ -246,14 +248,10 @@ export function checkAndEnd(g: Game) {
   if (w) endGame(g, w);
 }
 
-const isGhost = (g: Game, id: string | null) => !!id && g.players.some((p) => p.id === id && !p.alive);
-
 function startMeeting(g: Game, reason: Meeting["reason"], callerId: string | null, now: number) {
   const newlyDead = g.players.filter((p) => !p.alive && !p.ejected && (p.diedAt ?? 0) >= (g.lastMeetingAt ?? 0));
-  // Everyone regroups at the TV, so claims and draws are dropped. Ghosts keep theirs:
-  // it's the last ritual they'll ever get.
-  poolOf(g).forEach((e) => !isGhost(g, e.claimedBy) && (e.claimedBy = null));
-  g.players.forEach((p) => (p.drawn = p.putBack = null));
+  // Everyone keeps the ritual they were holding. Only claims that had already lapsed are dropped.
+  poolOf(g).forEach((e) => !e.doneBy && !holder(g, e, now) && (e.claimedBy = null));
   if (g.bloodMoon.active) {
     g.bloodMoon.active = false;
     g.bloodMoon.lastEndedAt = now;
@@ -310,8 +308,8 @@ export function advance(g: Game, now: number): boolean {
         g.meeting = null;
         g.phase = "playing";
         g.lastMeetingAt = now;
-        // Ghosts' kept claims get a fresh clock now that play resumes.
-        poolOf(g).forEach((e) => isGhost(g, e.claimedBy) && !e.doneBy && (e.claimedAt = now));
+        // Kept claims get a fresh clock now that play resumes.
+        poolOf(g).forEach((e) => e.claimedBy && !e.doneBy && (e.claimedAt = now));
         g.meetingsReadyAt = now + g.settings.meetingCooldown * 1000;
         checkAndEnd(g);
       }
@@ -355,6 +353,7 @@ export type Action =
   | { type: "done"; id: string; answer?: string }
   | { type: "report"; id: string; meeting: boolean }
   | { type: "alive" }
+  | { type: "died" }
   | { type: "hush" }
   | { type: "readyVote" }
   | { type: "lantern"; targets: string[] }
@@ -455,6 +454,18 @@ export function act(g: Game, p: Player, a: Action, now: number) {
       if (a.meeting && g.phase === "playing") startMeeting(g, "report", p.id, now);
       return;
     }
+
+    // Killed and nobody's found you yet: report your own death. No meeting, and the TV only
+    // makes a noise. Who it was isn't shown until the next meeting.
+    case "died":
+      if (!playing) fail("Not now.");
+      if (!p.alive) fail("You're already a ghost.");
+      p.alive = false;
+      p.diedAt = now;
+      p.foundBy = p.id;
+      g.selfDeaths = (g.selfDeaths ?? 0) + 1;
+      checkAndEnd(g);
+      return;
 
     // The Hush: no meetings for a while. It shares the Blood Moon's cooldown.
     case "hush":
@@ -647,6 +658,7 @@ export function host(g: Game, a: HostAction, now: number) {
       g.winner = null;
       g.bloodMoon = freshMoon();
       g.hush = { endsAt: 0 };
+      g.selfDeaths = 0;
       return;
     }
 
@@ -769,6 +781,7 @@ export function publicView(g: Game, now: number) {
       role: over ? p.role : null,
       special: over ? (p.special ?? null) : null,
       foundBy: !p.alive && p.foundBy ? nameOf(p.foundBy) : null,
+      selfReported: !p.alive && p.foundBy === p.id,
       meetingsLeft: Math.max(0, g.settings.meetingsPerPlayer - (p.meetingsCalled ?? 0)),
     })),
     progress: g.phase === "lobby" ? { done: 0, total: 0 } : progress(g),
@@ -814,6 +827,7 @@ export function publicView(g: Game, now: number) {
       codeLength: bm.active ? (bm.code?.length ?? 0) : 0, // never the code itself
       savedAt: bm.savedAt ?? 0,
     },
+    selfDeaths: g.selfDeaths ?? 0,
     meetingsFrom: g.lastMeetingAt ?? 0, // the meeting ring fills from here to meetingsReadyAt
     meetingsReadyAt: g.meetingsReadyAt ?? 0,
     hush: { active: g.phase === "playing" && hushed(g, now), endsAt: g.hush?.endsAt ?? 0 },

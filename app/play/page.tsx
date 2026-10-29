@@ -524,7 +524,11 @@ function Playing({ s, me, now, send, sound }: { s: View; me: Me; now: number; se
           <div>
             <strong style={{ color: "#9fd0ff", fontSize: "1.1rem" }}>{me.ejected ? "You were voted out." : "You are a ghost."} Shh!</strong>
             <div style={{ fontSize: ".95rem" }}>
-              {s.players.find((p) => p.id === me.id)?.foundBy ? `${s.players.find((p) => p.id === me.id)!.foundBy} found your body. ` : ""}
+              {(() => {
+                const mine = s.players.find((p) => p.id === me.id);
+                if (mine?.selfReported) return "You reported your own death. ";
+                return mine?.foundBy ? `${mine.foundBy} found your body. ` : "";
+              })()}
               Don’t talk. You can finish the ritual you had, but can’t take new ones.
             </div>
             {me.canRevive && (
@@ -806,6 +810,7 @@ function RitualsTab({ s, me, now, send }: { s: View; me: Me; now: number; send: 
 function ActionsTab({ s, me, now, send }: { s: View; me: Me; now: number; send: Send }) {
   const [open, setOpen] = useState(false);
   const [bodyId, setBodyId] = useState<string | null>(null);
+  const [dying, setDying] = useState(false);
   const left = s.players.find((p) => p.id === me.id)?.meetingsLeft ?? 0;
   const traitor = me.role === "traitor";
   const events = traitor && (s.settings.bloodMoon || s.settings.hush) && (
@@ -876,6 +881,9 @@ function ActionsTab({ s, me, now, send }: { s: View; me: Me; now: number; send: 
       <button className="btn primary act-big" onClick={() => setOpen(true)}>
         💀 I found a body
       </button>
+      <button className="btn ghost" style={{ fontSize: "1.2rem" }} onClick={() => setDying(true)}>
+        🪦 I’ve been killed
+      </button>
       <div className="act-info">
         <p>
           <span>{s.hush.active ? "🔒" : "📢"}</span>
@@ -897,6 +905,28 @@ function ActionsTab({ s, me, now, send }: { s: View; me: Me; now: number; send: 
           </span>
         </p>
       </div>
+      {dying && (
+        <div className="overlay fade-in">
+          <div style={{ fontSize: "4rem" }}>🪦</div>
+          <h2 className="creep blood" style={{ fontSize: "2.2rem", lineHeight: 1.1 }}>Were you killed?</h2>
+          <p style={{ margin: "12px 0 24px", fontSize: "1.1rem" }}>You become a ghost. The TV makes a noise, and everyone finds out it was you at the next meeting.</p>
+          <div style={{ display: "grid", gap: 12, width: "100%", maxWidth: 340 }}>
+            <button
+              className="btn primary"
+              style={{ fontSize: "1.3rem" }}
+              onClick={() => {
+                send({ type: "died" });
+                setDying(false);
+              }}
+            >
+              💀 Yes, I’m dead
+            </button>
+            <button className="btn ghost" style={{ fontSize: "1.1rem" }} onClick={() => setDying(false)}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
       {open && (
         <div className="overlay fade-in" style={{ justifyContent: "flex-start", overflowY: "auto" }}>
           {!body ? (
