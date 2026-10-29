@@ -4,11 +4,10 @@ import { useEffect, useState } from "react";
 import { post, useMounted } from "@/lib/client";
 import { Atmos } from "@/components/shared";
 import type { Ritual } from "@/config/rituals";
-import type { BLOOD_MOON } from "@/config/bloodmoon";
 
-type Setup = { rituals: Ritual[]; bloodMoon: typeof BLOOD_MOON };
+type Setup = { rituals: Ritual[] };
 
-// A checklist for walking the house before the party (rituals and Blood Moon cards).
+// A checklist for walking the house before the party (rituals). The Blood Moon needs no setup.
 export default function SetupPage() {
   const mounted = useMounted();
   const [data, setData] = useState<Setup | null>(null);
@@ -42,20 +41,6 @@ export default function SetupPage() {
                     <p key={r.id} style={{ color: "var(--dim)", opacity: r.enabled === false ? 0.4 : 1, marginLeft: 12 }}>
                       {r.name} — {r.instructions}
                       {r.requires && ` (after ${data.rituals.find((x) => x.id === r.requires)?.name ?? r.requires})`}
-                    </p>
-                  ))}
-                </div>
-              ))}
-            </section>
-            <section className="panel" style={{ padding: 16, display: "grid", gap: 12 }}>
-              <h2 className="creep blood" style={{ fontSize: "1.6rem" }}>Blood Moon cards</h2>
-              <p style={{ color: "var(--dim)", fontSize: ".9rem" }}>Place each card at its location. Edit in <code>config/bloodmoon.ts</code>.</p>
-              {data.bloodMoon.seals.map((seal, i) => (
-                <div key={i} style={{ display: "grid", gap: 4 }}>
-                  <strong>Seal {i + 1}</strong>
-                  {seal.cards.map((c) => (
-                    <p key={c.location} style={{ marginLeft: 12 }}>
-                      <span style={{ color: "var(--candle)", fontWeight: 700, fontSize: "1.2rem" }}>{c.card}</span> at {c.location}
                     </p>
                   ))}
                 </div>

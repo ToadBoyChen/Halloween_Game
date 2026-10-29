@@ -500,6 +500,38 @@ button:disabled {
   line-height: 1.45;
 }
 
+/* Rituals with a question: the answer box sits right under the instructions */
+.answer-box {
+  display: grid;
+  gap: 12px;
+  margin-top: 6px;
+  padding: 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 179, 71, 0.4);
+  background: rgba(255, 179, 71, 0.06);
+}
+.answer-box h4 {
+  text-align: center;
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: var(--candle);
+}
+.answer-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.btn.answer {
+  width: 100%;
+  min-height: 76px;
+  font-size: 2.1rem;
+  letter-spacing: 0.04em;
+  border-color: rgba(255, 179, 71, 0.45);
+}
+.btn.answer:disabled {
+  opacity: 0.35;
+}
+
 /* Lobby settings (TV host panel and /admin) */
 .settings {
   display: grid;
@@ -792,6 +824,18 @@ button:disabled {
   contain: layout;
   width: var(--s);
   height: var(--s);
+}
+/* Won the last game: a little crown floating above the soul */
+.soul .crown {
+  position: absolute;
+  left: 50%;
+  bottom: 78%;
+  transform: translateX(-50%) rotate(-8deg);
+  font-size: max(11px, calc(var(--s) * 0.5));
+  line-height: 1;
+  filter: drop-shadow(0 0 4px rgba(255, 200, 80, 0.8));
+  pointer-events: none;
+  z-index: 1;
 }
 .soul .core {
   position: absolute;
@@ -1391,40 +1435,43 @@ button.ritual-row {
   animation: rune-flicker 1.8s ease-in-out infinite alternate;
 }
 
-/* ─── Blood Moon card picker (phone) ────────────────────── */
+/* ─── Blood Moon code (phone and TV) ─────────────────────── */
 
-.moon-slot {
+/* One box per digit. The half you don't have shows as "?", and a gap splits the halves. */
+.moon-digits {
   display: flex;
-  flex-direction: column;
   justify-content: center;
-  gap: 8px;
-  padding: 12px 14px;
-}
-.card-row {
-  display: grid;
-  grid-template-columns: repeat(6, 1fr);
   gap: 6px;
 }
-.playing-card {
-  aspect-ratio: 5 / 7;
-  max-height: 84px;
+.moon-digits .digit {
+  width: 2.6rem;
+  height: 3.4rem;
+  display: grid;
+  place-items: center;
   border-radius: 8px;
-  border: 1px solid #bbb;
-  background: linear-gradient(160deg, #fffdf6, #e8e0cc);
-  color: #111;
+  border: 2px solid var(--blood-bright);
+  background: rgba(255, 31, 61, 0.12);
+  color: var(--ink);
+  font-size: 2rem;
   font-weight: 800;
-  font-size: 1.35rem;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
-  transition: transform 0.1s;
 }
-.playing-card.red {
-  color: #b3001b;
+.moon-digits .digit.missing {
+  border-style: dashed;
+  border-color: var(--line);
+  background: transparent;
+  color: var(--dim);
 }
-.playing-card:active:not(:disabled) {
-  transform: scale(0.92);
+.moon-digits .split {
+  width: 10px;
 }
-.playing-card:disabled {
-  opacity: 0.35;
+.moon-digits.tv .digit {
+  width: 7vw;
+  height: 9vw;
+  font-size: 6vw;
+  border-radius: 1vw;
+}
+.moon-digits.tv .split {
+  width: 3vw;
 }
 
 /* ─── Spirit Board: a talking board seen from above ───────── */
@@ -1530,14 +1577,14 @@ button.ritual-row {
 .sb-candle {
   position: absolute;
   transform: translate(-50%, -50%);
-  width: 11vw;
   display: grid;
   justify-items: center;
   text-align: center;
   gap: 0.2vh;
 }
+/* --s shrinks the candles and their words when there are lots of rituals */
 .sb-wax {
-  width: 3.2vw;
+  width: calc(3.2vw * var(--s, 1));
   height: auto;
   overflow: visible;
 }
@@ -1590,9 +1637,17 @@ button.ritual-row {
 .sb-name {
   font-family: var(--flavor-font);
   font-style: italic;
-  font-size: 1.25vw;
+  font-size: calc(1.25vw * var(--s, 1));
   line-height: 1.1;
   color: var(--bone);
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  /* at most two lines, then "…" */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
 }
 .sb-candle.cold .sb-name,
 .sb-candle.locked .sb-name {
@@ -1603,9 +1658,13 @@ button.ritual-row {
   text-shadow: 0 0 0.8vw rgba(255, 179, 71, 0.7);
 }
 .sb-note {
-  font-size: 0.95vw;
+  font-size: calc(0.95vw * var(--s, 1));
   font-weight: 700;
   color: rgba(233, 220, 192, 0.55);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .sb-candle.held .sb-note { color: var(--flame); }
 .sb-candle.opened .sb-note { color: #7fdc8a; }
@@ -1614,7 +1673,7 @@ button.ritual-row {
 /* The planchette: the board's one moving piece */
 .sb-planchette {
   position: absolute;
-  width: 7.4vw;
+  width: calc(7.4vw * var(--s, 1));
   /* the window's centre (60,92 of 120x140) sits on the spot */
   transform: translate(-50%, -65.7%) rotate(-7deg);
   transition: left 2.4s cubic-bezier(0.45, 0, 0.2, 1), top 2.4s cubic-bezier(0.45, 0, 0.2, 1);

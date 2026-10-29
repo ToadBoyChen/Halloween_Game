@@ -17,7 +17,8 @@ export function Atmos({ red = false, rich = false, hush = false }: { red?: boole
   );
 }
 
-export function Soul({ color, size = 18, dead = false }: { color: string; size?: number; dead?: boolean }) {
+// `crown`: they won the last game. It stays until they lose one.
+export function Soul({ color, size = 18, dead = false, crown = false }: { color: string; size?: number; dead?: boolean; crown?: boolean }) {
   // Offset each color's animation so a row of souls doesn't pulse in lockstep.
   const offset = -((color.charCodeAt(0) * 7 + color.length * 13) % 40) / 10;
   return (
@@ -29,6 +30,11 @@ export function Soul({ color, size = 18, dead = false }: { color: string; size?:
       <span className="aura" />
       <span className="wisp" />
       <span className="core" />
+      {crown && (
+        <span className="crown" role="img" aria-label="Won the last game">
+          👑
+        </span>
+      )}
     </span>
   );
 }
@@ -157,7 +163,7 @@ export function SoulList({ players, big = false }: { players: P[]; big?: boolean
       <div style={{ display: "flex", flexWrap: "wrap", gap: "4vh 3.5vw", justifyContent: "center" }}>
         {players.map((p) => (
           <div key={p.id} className="fade-in" style={{ display: "grid", justifyItems: "center", gap: 20 }}>
-            <Soul color={p.color} size={96} dead={!p.alive} />
+            <Soul color={p.color} crown={p.crowned} size={96} dead={!p.alive} />
             <span
               className="flavor"
               style={{ fontSize: "1.35rem", letterSpacing: "0.04em", color: "var(--ink)", opacity: p.alive ? 0.9 : 0.3 }}
@@ -185,7 +191,7 @@ export function SoulList({ players, big = false }: { players: P[]; big?: boolean
             textDecoration: p.alive ? "none" : "line-through",
           }}
         >
-          <Soul color={p.color} size={16} dead={!p.alive} />
+          <Soul color={p.color} crown={p.crowned} size={16} dead={!p.alive} />
           {p.name}
         </div>
       ))}

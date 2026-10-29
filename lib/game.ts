@@ -1,4 +1,4 @@
-import { RITUALS, type Ritual } from "@/config/rituals";
+import { ANSWER_OPTIONS, RITUALS, WRONG_ANSWER_LOCKOUT, type Ritual } from "@/config/rituals";
 import { BLOOD_MOON } from "@/config/bloodmoon";
 import {
   DEFAULT_SETTINGS,
@@ -33,15 +33,20 @@ export type Player = {
   num?: number; // fixed when the game starts, so kicking someone doesn't renumber everyone
   bot?: boolean; // test bot (see lib/testing.ts)
   ready?: boolean; // pressed "I'm ready" after seeing their role
+  drawn?: string | null; // ritual pulled from the pot, waiting for them to take it or put it back
+  putBack?: string | null; // the last one they put back, so the next draw is something else
+  wrongUntil?: number; // picked a wrong answer: can't answer again until this
+  crowned?: boolean; // was on the winning side of the last game
 };
 
-// One ritual in the shared pool. Anyone can claim it, then finish it.
+// One ritual in the shared pool. Players draw them from the pot at random, then claim and finish them.
 export type PoolRitual = {
   id: string;
   claimedBy: string | null;
   claimedAt: number;
   doneBy: string | null;
   doneAt: number;
+  options?: string[]; // for rituals with a question: the answer plus some wrong ones, shuffled
 };
 
 export type Meeting = {
@@ -72,14 +77,10 @@ export type Game = {
   bloodMoon: {
     active: boolean;
     endsAt: number;
-    seal: number;
-    used: number[];
     lastEndedAt: number;
-    options: string[][]; // card choices shown for each of the two locations
-    sealed: (string | null)[]; // who sealed each location (player id)
-    lockouts: Record<string, number>; // player id -> can try again at
-    savedBy: string[]; // player ids who stopped the last Blood Moon
-    savedAt: number;
+    code: string; // the secret code, typed on the TV to stop it
+    halves: Record<string, 0 | 1>; // player id -> which half of the code their phone shows
+    savedAt: number; // when the code was last typed in time
   };
   meetingsReadyAt: number; // nobody can call a meeting before this
   lastMeetingAt: number; // when play last started or resumed
@@ -130,22 +131,67 @@ function shuffle<T>(arr: T[]): T[] {
   return a;
 }
 
+// Catch typos in config/rituals.ts early. They show up in the server log.
+for (const [i, r] of RITUALS.entries()) {
+  if (RITUALS.findIndex((x) => x.id === r.id) !== i) console.warn(`[rituals] Two rituals share the id "${r.id}". Only the first one is used.`);
+  if (r.requires && !RITUALS.some((x) => x.id === r.requires)) console.warn(`[rituals] "${r.id}" requires "${r.requires}", which doesn't exist. It will never appear.`);
+}
+
 const enabledRituals = (g: Game) => RITUALS.filter((r) => !g.disabled.includes(r.id));
 const ritual = (id: string) => RITUALS.find((r) => r.id === id);
 
-// Fill the shared pool with random rituals, pulling in whatever each one requires.
-function buildPool(g: Game) {
+// The ritual plus every ritual it waits on, all the way back to the start of its chain.
+// If a step is missing from config, switched off, or the chain loops back on itself, this
+// returns that step's id instead: the ritual can never be unlocked, so it's left out.
+function chainOf(r: Ritual, on: Set<string>): Ritual[] | string {
+  const chain: Ritual[] = [];
+  for (let id: string | undefined = r.id; id; ) {
+    const x = ritual(id);
+    if (!x || !on.has(id) || chain.includes(x)) return id;
+    chain.push(x);
+    id = x.requires;
+  }
+  return chain;
+}
+
+// Rituals that can go in a game: switched on, with every earlier step switched on too.
+function playableRituals(g: Game) {
   const enabled = enabledRituals(g);
   const on = new Set(enabled.map((r) => r.id));
-  const want = Math.min(enabled.length, g.settings.ritualsPerPlayer * g.players.length);
+  return { enabled, on, playable: enabled.filter((r) => Array.isArray(chainOf(r, on))) };
+}
+
+// Fill the shared pool with random rituals. Rituals that share a first step form one
+// storyline (e.g. all the Verity steps), and a lone ritual is a storyline of one. Storylines
+// are shuffled and go in whole, first step first, so a chain is never missing a middle step
+// and every ritual has about the same chance of being in the game. Only the last storyline
+// may be cut short to fit, and then it's the ending that's dropped, never a middle step.
+function buildPool(g: Game) {
+  const { enabled, on, playable } = playableRituals(g);
+  const want = Math.min(playable.length, g.settings.ritualsPerPlayer * g.players.length);
+  const chains = new Map(playable.map((r) => [r.id, chainOf(r, on) as Ritual[]]));
+  const storylines = new Map<string, Ritual[]>();
+  for (const r of playable) {
+    const first = chains.get(r.id)!.at(-1)!.id;
+    storylines.set(first, [...(storylines.get(first) ?? []), r]);
+  }
   const picked = new Set<string>();
-  for (const r of shuffle(enabled)) {
-    if (picked.size >= want) break;
-    for (let x: Ritual | undefined = r; x && on.has(x.id) && !picked.has(x.id); x = x.requires ? ritual(x.requires) : undefined) {
+  for (const storyline of shuffle([...storylines.values()])) {
+    for (const x of storyline.sort((a, b) => chains.get(a.id)!.length - chains.get(b.id)!.length)) {
+      if (picked.size >= want) break;
       picked.add(x.id);
     }
   }
-  g.pool = enabled.filter((r) => picked.has(r.id)).map((r) => ({ id: r.id, claimedBy: null, claimedAt: 0, doneBy: null, doneAt: 0 }));
+  g.pool = enabled
+    .filter((r) => picked.has(r.id))
+    .map((r) => ({ id: r.id, claimedBy: null, claimedAt: 0, doneBy: null, doneAt: 0, options: answerOptions(r) }));
+}
+
+// The right answer plus a few wrong ones, shuffled. Rituals without a question get none.
+function answerOptions(r: Ritual) {
+  if (!r.answer) return undefined;
+  const wrong = shuffle((r.choices ?? []).filter((c) => normalize(c) !== normalize(r.answer!))).slice(0, ANSWER_OPTIONS - 1);
+  return shuffle([r.answer, ...wrong]);
 }
 
 // ─── Rules ───────────────────────────────────────────────────
@@ -185,9 +231,12 @@ function checkWin(g: Game): Game["winner"] {
   return null;
 }
 
+// The winning side wear crowns until they lose a game. Ghosts and banished players
+// on the winning side win too.
 function endGame(g: Game, winner: NonNullable<Game["winner"]>) {
   g.phase = "over";
   g.winner = winner;
+  g.players.forEach((p) => (p.crowned = p.role === winner.side));
   g.meeting = null;
   g.bloodMoon.active = false;
 }
@@ -197,10 +246,14 @@ export function checkAndEnd(g: Game) {
   if (w) endGame(g, w);
 }
 
+const isGhost = (g: Game, id: string | null) => !!id && g.players.some((p) => p.id === id && !p.alive);
+
 function startMeeting(g: Game, reason: Meeting["reason"], callerId: string | null, now: number) {
   const newlyDead = g.players.filter((p) => !p.alive && !p.ejected && (p.diedAt ?? 0) >= (g.lastMeetingAt ?? 0));
-  // Everyone regroups at the TV, so claims are dropped.
-  poolOf(g).forEach((e) => (e.claimedBy = null));
+  // Everyone regroups at the TV, so claims and draws are dropped. Ghosts keep theirs:
+  // it's the last ritual they'll ever get.
+  poolOf(g).forEach((e) => !isGhost(g, e.claimedBy) && (e.claimedBy = null));
+  g.players.forEach((p) => (p.drawn = p.putBack = null));
   if (g.bloodMoon.active) {
     g.bloodMoon.active = false;
     g.bloodMoon.lastEndedAt = now;
@@ -257,6 +310,8 @@ export function advance(g: Game, now: number): boolean {
         g.meeting = null;
         g.phase = "playing";
         g.lastMeetingAt = now;
+        // Ghosts' kept claims get a fresh clock now that play resumes.
+        poolOf(g).forEach((e) => isGhost(g, e.claimedBy) && !e.doneBy && (e.claimedAt = now));
         g.meetingsReadyAt = now + g.settings.meetingCooldown * 1000;
         checkAndEnd(g);
       }
@@ -293,9 +348,11 @@ export function join(g: Game, name: string, color: string) {
 
 export type Action =
   | { type: "leave" }
+  | { type: "draw" }
+  | { type: "putBack" }
   | { type: "claim"; id: string }
   | { type: "release" }
-  | { type: "done"; id: string }
+  | { type: "done"; id: string; answer?: string }
   | { type: "report"; id: string; meeting: boolean }
   | { type: "alive" }
   | { type: "hush" }
@@ -303,8 +360,7 @@ export type Action =
   | { type: "lantern"; targets: string[] }
   | { type: "vote"; target: string }
   | { type: "summon" }
-  | { type: "ready" }
-  | { type: "seal"; slot: number; card: string };
+  | { type: "ready" };
 
 export function act(g: Game, p: Player, a: Action, now: number) {
   const playing = g.phase === "playing";
@@ -314,20 +370,44 @@ export function act(g: Game, p: Player, a: Action, now: number) {
       g.players = g.players.filter((x) => x.id !== p.id);
       return;
 
-    // Rituals come from one shared pool. Everyone's count, even the Possessed's, and
-    // ghosts keep finishing them. You hold one claim at a time.
+    // Rituals come from one shared pot. Everyone's count, even the Possessed's. You pull
+    // one at random, then take it or put it back. You hold one claim at a time.
+    // Ghosts can finish the ritual they were holding, but can't take new ones.
+    case "draw": {
+      if (!playing) fail("Not now.");
+      if (!p.alive) fail("Ghosts can't take new rituals.");
+      if (poolOf(g).some((x) => x.claimedBy === p.id && !x.doneBy)) fail("Finish your ritual first.");
+      // Prefer ones nobody else is looking at, and not the one you just put back.
+      const open = poolOf(g).filter((e) => !e.doneBy && !holder(g, e, now) && !blocker(g, e));
+      const unseen = open.filter((e) => !g.players.some((x) => x.id !== p.id && x.drawn === e.id));
+      const fresh = (unseen.length ? unseen : open).filter((e) => e.id !== p.putBack);
+      const choices = fresh.length ? fresh : unseen.length ? unseen : open;
+      if (!choices.length) fail("The pot is empty right now. Check back soon…");
+      p.drawn = choices[Math.floor(Math.random() * choices.length)].id;
+      return;
+    }
+
+    case "putBack":
+      p.putBack = p.drawn ?? null;
+      p.drawn = null;
+      return;
+
     case "claim": {
       if (!playing) fail("Not now.");
+      if (!p.alive) fail("Ghosts can't take new rituals.");
+      if (p.drawn !== a.id) fail("Draw a ritual from the pot first.");
       const e = poolOf(g).find((x) => x.id === a.id) ?? fail("That ritual isn't in this game.");
+      p.drawn = null;
       if (e.doneBy) fail("That ritual is already done.");
       const who = holder(g, e, now);
       if (who === p.id) return;
-      if (who) fail("Someone else has claimed that ritual.");
+      if (who) fail("Someone else just took that ritual. Draw again!");
       const before = blocker(g, e);
       if (before) fail(`Locked until “${ritual(before.id)?.name}” is done.`);
       poolOf(g).forEach((x) => x.claimedBy === p.id && (x.claimedBy = null));
       e.claimedBy = p.id;
       e.claimedAt = now;
+      p.putBack = null;
       return;
     }
 
@@ -340,6 +420,14 @@ export function act(g: Game, p: Player, a: Action, now: number) {
       const e = poolOf(g).find((x) => x.id === a.id) ?? fail("That ritual isn't in this game.");
       if (e.doneBy) fail("That ritual is already done.");
       if (e.claimedBy !== p.id) fail("Claim the ritual first.");
+      const answer = ritual(e.id)?.answer;
+      if (answer) {
+        if ((p.wrongUntil ?? 0) > now) fail("Wrong answer! Wait a moment before trying again.");
+        if (normalize(a.answer ?? fail("Pick your answer.")) !== normalize(answer)) {
+          p.wrongUntil = now + WRONG_ANSWER_LOCKOUT * 1000;
+          return; // the phone sees the lockout and shows "wrong answer"
+        }
+      }
       e.doneBy = p.id;
       e.doneAt = now;
       e.claimedBy = null;
@@ -437,19 +525,10 @@ export function act(g: Game, p: Player, a: Action, now: number) {
       if (hushed(g, now)) fail("Something is already happening.");
       const readyAt = summonReadyAt(g);
       if (now < readyAt) fail("The Blood Moon isn't ready yet.");
-      let choices = BLOOD_MOON.seals.map((_, i) => i).filter((i) => !bm.used.includes(i));
-      if (choices.length === 0) {
-        bm.used = [];
-        choices = BLOOD_MOON.seals.map((_, i) => i);
-      }
-      bm.seal = choices[Math.floor(Math.random() * choices.length)];
-      bm.used.push(bm.seal);
       bm.active = true;
       bm.endsAt = now + g.settings.bloodMoonDuration * 1000;
-      bm.options = BLOOD_MOON.seals[bm.seal].cards.map((c) => cardOptions(c.card));
-      bm.sealed = [null, null];
-      bm.lockouts = {};
-      bm.savedBy = [];
+      bm.code = Array.from({ length: BLOOD_MOON.codeLength }, () => Math.floor(Math.random() * 10)).join("");
+      bm.halves = dealHalves(g);
       return;
     }
 
@@ -458,29 +537,6 @@ export function act(g: Game, p: Player, a: Action, now: number) {
       p.ready = true;
       if (g.players.every((x) => x.ready)) beginHaunting(g, now);
       return;
-
-    // Pick the card found at one Blood Moon location. Anyone alive can do it, even the Possessed.
-    case "seal": {
-      const bm = g.bloodMoon;
-      if (!playing || !bm.active) fail("There is no Blood Moon right now.");
-      if (!p.alive) fail("Ghosts can't stop the Blood Moon.");
-      if (a.slot !== 0 && a.slot !== 1) fail("Pick a location.");
-      if (bm.sealed[a.slot]) fail("That one is already sealed!");
-      if ((bm.lockouts[p.id] ?? 0) > now) fail("Wrong card! Wait a moment before trying again.");
-      const card = BLOOD_MOON.seals[bm.seal].cards[a.slot].card;
-      if (normalize(card) !== normalize(a.card)) {
-        bm.lockouts[p.id] = now + BLOOD_MOON.wrongLockout * 1000;
-        return; // the phone sees the lockout and shows "wrong card"
-      }
-      bm.sealed[a.slot] = p.id;
-      if (bm.sealed.every(Boolean)) {
-        bm.active = false;
-        bm.lastEndedAt = now;
-        bm.savedBy = [...new Set(bm.sealed as string[])];
-        bm.savedAt = now;
-      }
-      return;
-    }
 
     default:
       fail("Unknown action.");
@@ -498,25 +554,26 @@ export function summonReadyAt(g: Game) {
 
 const normalize = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, "");
 
-const RANKS = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"];
-
-// The right card plus 5 decoys, shuffled.
-function cardOptions(card: string) {
-  const decoys = shuffle(RANKS.filter((r) => normalize(r) !== normalize(card))).slice(0, 5);
-  return shuffle([card, ...decoys]);
+// Which half of the code each player's phone shows. Living Mortals are dealt first, taking
+// turns, so both halves are always held by Mortals (two of each once there are four). That's
+// what stops the Possessed from sabotaging it: they get a real half too, but lying about it or
+// hiding it never leaves the Mortals stuck. Everyone else gets a random half, so a revived
+// player has one and the halves give nothing away about who's who.
+function dealHalves(g: Game) {
+  const halves: Record<string, 0 | 1> = {};
+  const first = Math.random() < 0.5 ? 0 : 1;
+  shuffle(g.players.filter((p) => p.alive && p.role !== "traitor")).forEach((p, i) => (halves[p.id] = ((i + first) % 2) as 0 | 1));
+  for (const p of g.players) if (!(p.id in halves)) halves[p.id] = Math.random() < 0.5 ? 0 : 1;
+  return halves;
 }
 
 function freshMoon(): Game["bloodMoon"] {
   return {
     active: false,
     endsAt: 0,
-    seal: 0,
-    used: [],
     lastEndedAt: 0,
-    options: [],
-    sealed: [],
-    lockouts: {},
-    savedBy: [],
+    code: "",
+    halves: {},
     savedAt: 0,
   };
 }
@@ -554,6 +611,7 @@ export type HostAction =
   | { type: "skip" }
   | { type: "cancelMoon" }
   | { type: "summonMoon" }
+  | { type: "moonCode"; code: string }
   | { type: "lobby" }
   | { type: "reset" };
 
@@ -562,7 +620,7 @@ export function host(g: Game, a: HostAction, now: number) {
     case "start": {
       if (g.phase !== "lobby") fail("A game is already running.");
       if (g.players.length < minPlayers()) fail(`At least ${minPlayers()} souls are needed.`);
-      if (enabledRituals(g).length === 0) fail("Enable at least one ritual.");
+      if (playableRituals(g).playable.length === 0) fail("Enable at least one ritual.");
       const k = traitorCount(g);
       const traitors = new Set(shuffle(g.players).slice(0, k).map((p) => p.id));
       g.players.forEach((p, i) => (p.num = i + 1));
@@ -577,6 +635,8 @@ export function host(g: Game, a: HostAction, now: number) {
         p.foundBy = null;
         p.ejected = false;
         p.meetingsCalled = 0;
+        p.drawn = p.putBack = null;
+        p.wrongUntil = 0;
       }
       buildPool(g);
       g.phase = "reveal";
@@ -643,6 +703,18 @@ export function host(g: Game, a: HostAction, now: number) {
       return;
     }
 
+    // Someone typed the Blood Moon code on the TV keyboard. A wrong code just says so: no
+    // lockout, so nobody (the Possessed included) can block the keyboard by typing junk.
+    case "moonCode": {
+      const bm = g.bloodMoon;
+      if (g.phase !== "playing" || !bm.active) fail("There is no Blood Moon right now.");
+      if (String(a.code).replace(/\D/g, "") !== bm.code) fail("Wrong code! Check both halves and try again.");
+      bm.active = false;
+      bm.lastEndedAt = now;
+      bm.savedAt = now;
+      return;
+    }
+
     case "cancelMoon":
       if (g.bloodMoon.active) {
         g.bloodMoon.active = false;
@@ -691,6 +763,7 @@ export function publicView(g: Game, now: number) {
       num: g.phase === "lobby" ? i + 1 : (p.num ?? i + 1), // typed on the TV keyboard to call a meeting
       name: p.name,
       color: p.color,
+      crowned: !!p.crowned,
       alive: p.alive,
       ejected: p.ejected,
       role: over ? p.role : null,
@@ -708,6 +781,7 @@ export function publicView(g: Game, now: number) {
         name: r?.name ?? e.id,
         location: r?.location ?? "",
         instructions: r?.instructions ?? "",
+        options: e.options ?? [], // never the answer itself
         claimedBy: who && !e.doneBy ? nameOf(who) : null,
         claimedById: who && !e.doneBy ? who : null,
         claimEndsAt: who && !e.doneBy ? e.claimedAt + g.settings.claimTimeout * 1000 : 0,
@@ -737,10 +811,7 @@ export function publicView(g: Game, now: number) {
     bloodMoon: {
       active: bm.active,
       endsAt: bm.endsAt,
-      locations: bm.active ? BLOOD_MOON.seals[bm.seal].cards.map((c) => c.location) : [],
-      options: bm.active ? (bm.options ?? []) : [],
-      sealedBy: bm.active ? (bm.sealed ?? []).map((id) => (id ? nameOf(id) : null)) : [],
-      savedBy: (bm.savedBy ?? []).map(nameOf),
+      codeLength: bm.active ? (bm.code?.length ?? 0) : 0, // never the code itself
       savedAt: bm.savedAt ?? 0,
     },
     meetingsFrom: g.lastMeetingAt ?? 0, // the meeting ring fills from here to meetingsReadyAt
@@ -748,12 +819,21 @@ export function publicView(g: Game, now: number) {
     hush: { active: g.phase === "playing" && hushed(g, now), endsAt: g.hush?.endsAt ?? 0 },
     readyIds: g.phase === "reveal" ? g.players.filter((p) => p.ready).map((p) => p.id) : [],
     winner: over ? g.winner : null,
-    rituals: RITUALS.map((r) => ({
-      id: r.id,
-      name: r.name,
-      location: r.location,
-      enabled: !g.disabled.includes(r.id),
-    })),
+    rituals: (() => {
+      const { on } = playableRituals(g);
+      return RITUALS.map((r) => {
+        const chain = chainOf(r, on);
+        const enabled = !g.disabled.includes(r.id);
+        return {
+          id: r.id,
+          name: r.name,
+          location: r.location,
+          enabled,
+          // Switched on, but its chain is broken (an earlier step is off or missing), so it won't be used.
+          blockedBy: enabled && typeof chain === "string" ? (ritual(chain)?.name ?? `“${chain}” (missing)`) : null,
+        };
+      });
+    })(),
   };
 }
 
@@ -775,9 +855,21 @@ export function playerView(g: Game, p: Player, now: number) {
       canRevive: canRevive(g, p),
       special: p.special ?? null,
       lanternUsed: !!p.lanternUsed,
-      sealLockedUntil: g.bloodMoon.lockouts?.[p.id] ?? 0,
+      moonHalf: moonHalf(g, p),
+      drawn: g.phase === "playing" ? (p.drawn ?? null) : null,
+      wrongUntil: p.wrongUntil ?? 0,
+      crowned: !!p.crowned,
     },
   };
+}
+
+// The half of the Blood Moon code this player's phone shows (only while they're alive).
+function moonHalf(g: Game, p: Player) {
+  const bm = g.bloodMoon;
+  const half = bm.halves?.[p.id];
+  if (g.phase !== "playing" || !bm.active || !p.alive || half === undefined || !bm.code) return null;
+  const mid = Math.ceil(bm.code.length / 2);
+  return { half, digits: half === 0 ? bm.code.slice(0, mid) : bm.code.slice(mid), length: bm.code.length };
 }
 
 export type PublicView = ReturnType<typeof publicView>;

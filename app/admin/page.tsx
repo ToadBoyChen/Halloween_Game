@@ -24,14 +24,14 @@ type Admin = {
     active: boolean;
     endsIn: number;
     readyIn: number;
-    cards: { location: string; card: string }[];
-    sealedBy: (string | null)[];
+    code: string | null;
   };
   players: {
     num: number;
     name: string;
     color: string;
     bot: boolean;
+    crowned: boolean;
     role: string | null;
     special: string | null;
     alive: boolean;
@@ -152,12 +152,9 @@ function Controls() {
           {bm?.active && (
             <div className="panel" style={{ gridColumn: "1 / -1", padding: 12, display: "grid", gap: 4, borderColor: "var(--blood-bright)" }}>
               <strong className="blood">Blood Moon rising! {bm.endsIn}s left</strong>
-              {bm.cards.map((c, i) => (
-                <span key={c.location}>
-                  📍 {c.location}: <strong style={{ color: "var(--candle)" }}>{c.card}</strong>
-                  {bm.sealedBy[i] ? ` ✓ sealed by ${bm.sealedBy[i]}` : ""}
-                </span>
-              ))}
+              <span>
+                Code: <strong style={{ color: "var(--candle)", letterSpacing: ".2em" }}>{bm.code}</strong>
+              </span>
             </div>
           )}
           {btn("🌕 Blood Moon now", { do: "moon" }, true, phase !== "playing" || !!bm?.active)}
@@ -186,7 +183,7 @@ function Controls() {
           {btn("Bot finds a body", { do: "botkill" }, false, phase !== "playing")}
           {btn("Bot finds my body", { do: "botkill", name: human }, false, phase !== "playing" || !human)}
           {btn("Bot reports + meeting", { do: "botreport" }, false, phase !== "playing")}
-          {btn("Bot stops Blood Moon", { do: "botseal" }, false, !bm?.active)}
+          {btn("Type the Blood Moon code", { do: "botseal" }, false, !bm?.active)}
           {btn("Bots vote skip", { do: "botvote", target: "skip" }, false, s?.stage !== "voting")}
           {btn("Bots vote random", { do: "botvote", target: "random" }, false, s?.stage !== "voting")}
           {btn("Bots vote me", { do: "botvote", target: human }, false, s?.stage !== "voting" || !human)}
@@ -257,7 +254,7 @@ function Status({ s, showRoles, onToggleRoles }: { s: Admin; showRoles: boolean;
         {s.players.map((p) => (
           <div key={p.name} className={`admin-player ${p.alive ? "" : "gone"}`} style={{ "--c": colorHex(p.color) } as React.CSSProperties}>
             <span className="num-badge" style={{ fontSize: ".85rem" }}>{p.num}</span>
-            <Soul color={p.color} size={18} dead={!p.alive} />
+            <Soul color={p.color} crown={p.crowned} size={18} dead={!p.alive} />
             <span style={{ minWidth: 0 }}>
               <strong>
                 {p.name}

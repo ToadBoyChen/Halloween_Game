@@ -68,7 +68,7 @@ export function EmergencyPicker({ s, typed }: { s: View; typed: string }) {
             }}
           >
             <span className="num-badge">{p.num}</span>
-            <Soul color={p.color} size={22} dead={!p.alive} />
+            <Soul color={p.color} crown={p.crowned} size={22} dead={!p.alive} />
             {p.name}
           </span>
         ))}

@@ -1,4 +1,3 @@
-import { BLOOD_MOON } from "@/config/bloodmoon";
 import { RITUALS } from "@/config/rituals";
 import { SOUL_COLORS } from "@/config/game";
 import { act, checkAndEnd, host, hushed, join, traitorCount, GameError, progress, summonReadyAt, type Game, type Player, type Role } from "./game";
@@ -131,15 +130,16 @@ export function runAdmin(g: Game, a: AdminAction, now: number): unknown {
     // Bots claim and finish rituals from the pool (in order, so chains unlock as they go).
     case "bottasks": {
       const pct = Math.max(0, Math.min(Number(a.pct ?? 100), 100)) / 100;
-      const bots = g.players.filter((p) => p.bot);
-      if (!bots.length) fail("No bots.");
+      const bots = g.players.filter((p) => p.bot && p.alive);
+      if (!bots.length) fail("No living bots.");
       let count = Math.ceil(g.pool.filter((e) => !e.doneBy).length * pct);
       for (let i = 0; count > 0 && g.phase === "playing"; i++) {
         const e = g.pool.find((x) => !x.doneBy && !x.claimedBy && !g.pool.some((y) => y.id === ritualNeeds(x.id) && !y.doneBy));
         if (!e) break;
         const b = bots[i % bots.length];
+        b.drawn = e.id; // skip the random draw so chains unlock in order
         act(g, b, { type: "claim", id: e.id }, now);
-        act(g, b, { type: "done", id: e.id }, now);
+        act(g, b, { type: "done", id: e.id, answer: RITUALS.find((r) => r.id === e.id)?.answer }, now);
         count--;
       }
       return { progress: progress(g) };
@@ -221,15 +221,10 @@ export function runAdmin(g: Game, a: AdminAction, now: number): unknown {
       return { by: bearer.name, count: g.meeting?.lantern?.count };
     }
 
-    // A living bot finds and picks both Blood Moon cards.
-    case "botseal": {
-      if (!g.bloodMoon.active) fail("There is no Blood Moon right now.");
-      const bot = pick(livingBots(g)) ?? fail("No living bots.");
-      BLOOD_MOON.seals[g.bloodMoon.seal].cards.forEach((c, slot) => {
-        if (!g.bloodMoon.sealed[slot]) act(g, bot, { type: "seal", slot, card: c.card }, now);
-      });
-      return { savedBy: bot.name };
-    }
+    // Someone types the right Blood Moon code on the TV.
+    case "botseal":
+      host(g, { type: "moonCode", code: g.bloodMoon.code }, now);
+      return { ok: true };
 
     // Everyone still looking at their role becomes ready.
     case "ready":
@@ -245,9 +240,7 @@ export function runAdmin(g: Game, a: AdminAction, now: number): unknown {
 const ritualNeeds = (id: string) => RITUALS.find((r) => r.id === id)?.requires;
 
 function currentCode(g: Game) {
-  if (!g.bloodMoon.active) return null;
-  const seal = BLOOD_MOON.seals[g.bloodMoon.seal];
-  return { code: seal.cards.map((c) => c.card).join(""), cards: seal.cards };
+  return g.bloodMoon.active ? g.bloodMoon.code : null;
 }
 
 // Everything, including roles, for the admin page. Tokens are left out.
@@ -274,8 +267,7 @@ export function debugView(g: Game) {
       active: bm.active,
       endsIn: bm.active ? Math.max(0, Math.round((bm.endsAt - now) / 1000)) : 0,
       readyIn: g.phase === "playing" ? Math.max(0, Math.round((summonReadyAt(g) - now) / 1000)) : 0,
-      cards: bm.active ? BLOOD_MOON.seals[bm.seal].cards : [],
-      sealedBy: bm.active ? (bm.sealed ?? []).map(nameOf) : [],
+      code: bm.active ? bm.code : null,
     },
     players: g.players.map((p, i) => {
       const claim = g.pool.find((e) => e.claimedBy === p.id && !e.doneBy && now - e.claimedAt < g.settings.claimTimeout * 1000);
@@ -284,6 +276,7 @@ export function debugView(g: Game) {
         name: p.name,
         color: p.color,
         bot: !!p.bot,
+        crowned: !!p.crowned,
         role: p.role,
         special: p.special ?? null,
         alive: p.alive,

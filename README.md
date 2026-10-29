@@ -8,7 +8,7 @@ A physical, phone-driven social deduction game for a Halloween party. The hub (`
 2. Players scan the QR code, pick a name and a soul color.
 3. Open `/spirits` on a computer elsewhere in the house: that's the **Spirit Board**.
 4. Press **Space** to start. **H** (or the ⛧ in the bottom-right corner) opens host controls.
-5. Before the party, open `/setup` on your phone to walk the house: it lists every ritual by location and every Blood Moon card.
+5. Before the party, open `/setup` on your phone to walk the house: it lists every ritual by location. The Blood Moon needs no setup.
 
 ## Rules
 
@@ -22,7 +22,7 @@ A physical, phone-driven social deduction game for a Halloween party. The hub (`
 - **Role reveal:** no timer. Everyone holds to see their role and taps *I'm ready*; the game starts when all players are ready (the host can skip).
 - **🏮 The Lantern Bearer:** with 5+ players, one Mortal secretly gets a lantern (switch it off in settings). Once per game, during talk time, they tap *Light the Lantern* and pick three players. The TV shows a swinging lantern and reveals how many of the three are Possessed (none, one, two or all three), but never who the Lantern Bearer is. The Possessed may well claim to be the Lantern Bearer.
 - **The Hush:** the Possessed call it from *⚡ Actions*. For 60 seconds nobody can call a meeting (bodies can still be reported without one). Screens go cold and grey, and a 🔒 covers the meeting buttons. It shares the Blood Moon's cooldown.
-- **Blood Moon:** the Possessed summon it from *⚡ Actions* (alive or dead). Each Blood Moon uses two locations with a playing card at each. Anyone alive, even the Possessed, finds a card and taps it on their phone from 6 choices. One player can do both, or two can split up. A wrong pick locks that player out for 10s. When both are sealed the TV shows who saved everyone. Timings are in the host panel under **🌕 Blood Moon**.
+- **Blood Moon:** the Possessed summon it from *⚡ Actions* (alive or dead). The game makes a secret 6-digit code and every living player's phone shows either the first or the second half. Players find someone with the other half, check each other's screens, and type the whole code on the TV keyboard, then press Enter. The Possessed get a real half too, and the Mortals always hold both halves between them, so lying or hiding a half can't stop it. A wrong code on the TV just clears, with no lockout. Timings are in the host panel under **🌕 Blood Moon**.
 
 ## Sound
 
@@ -31,7 +31,7 @@ The TV plays every game event, with no background noise. The Blood Moon adds a s
 ## Adding or removing things
 
 - Rituals: `config/rituals.ts`. Add an entry, delete one, or set `enabled: false`. You can also toggle rituals in the host panel.
-- Blood Moon cards and locations: `config/bloodmoon.ts`. Add one `seals` entry per pair of cards.
+- Blood Moon timings and code length: `config/bloodmoon.ts`.
 - Ritual chains: set `requires: "<other ritual id>"`. Keep chains 1–2 deep.
 - Default timers and settings: `config/game.ts` (Blood Moon defaults in `config/bloodmoon.ts`). All of them can be changed in the host panel lobby.
 
@@ -51,7 +51,7 @@ Open `/admin` on your phone to run the game without touching the laptop:
 
 - **Status:** the phase and meeting stage, ritual progress, the meeting ring, the Hush, when the Possessed's powers are ready, and ready-to-vote / vote counts. Every player is listed with their number, what they're working on, rituals done, emergency meetings left, and who found them if they're a ghost. Roles stay hidden until you tap **Show roles**, so you can play too.
 - **▶ Game:** start (or start as Possessed / Mortal / the Lantern Bearer), ⏭ skip timer, everyone ready, force a meeting, back to lobby, reset.
-- **😈 Possessed powers:** Blood Moon now / cancel it (with the card answers), Hush now / end it, and fill the meeting ring + ready the powers.
+- **😈 Possessed powers:** Blood Moon now / cancel it (with the code shown), Hush now / end it, and fill the meeting ring + ready the powers.
 - **🏮 Lantern:** during talk time, light the Lantern Bearer's lantern on three players you tick, or on three at random.
 - **☠ Kill & revive:** fix mistakes mid-game.
 - **🤖 Bots (testing alone):** add bots, make them do rituals, find bodies (with or without a meeting), vote and stop the Blood Moon.

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import QRCode from "qrcode";
 import { haunt } from "@/lib/audio";
 import { useEventSounds } from "@/lib/sounds";
@@ -22,14 +22,21 @@ function Hub() {
   const [hostOpen, setHostOpen] = useState(false);
   const [scare, setScare] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [moonCode, setMoonCode] = useState(""); // Blood Moon code being typed on the keyboard
   const [typed, setTyped] = useState<string | null>(null); // emergency number being typed (null = closed)
   useTicker(250);
   const now = serverNow();
   // Keyboard shortcuts for the host: Space = start / play again, S = skip timer, H = host controls.
   // While playing, any other key opens the emergency meeting: type your number, then Enter.
-  const stateRef = useRef<{ s: View | null; hostOpen: boolean; now: number; typed: string | null }>({ s: null, hostOpen: false, now: 0, typed: null });
+  const stateRef = useRef<{ s: View | null; hostOpen: boolean; now: number; typed: string | null; moonCode: string }>({
+    s: null,
+    hostOpen: false,
+    now: 0,
+    typed: null,
+    moonCode: "",
+  });
   useEffect(() => {
-    stateRef.current = { s, hostOpen, now, typed };
+    stateRef.current = { s, hostOpen, now, typed, moonCode };
   });
   useEffect(() => {
     const showToast = (msg: string) => {
@@ -42,8 +49,19 @@ function Hub() {
         .catch((e: Error) => showToast(e.message));
     const onKey = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement).tagName === "INPUT") return;
-      const { s, hostOpen, now, typed } = stateRef.current;
+      const { s, hostOpen, now, typed, moonCode } = stateRef.current;
       const phase = s?.phase ?? null;
+
+      // During the Blood Moon the keyboard types the code: digits, Backspace, Enter, Esc.
+      // A wrong code just shows a message and clears, so nobody can block the keyboard.
+      if (s && phase === "playing" && s.bloodMoon.active && !hostOpen && e.key !== "h" && e.key !== "H") {
+        e.preventDefault();
+        if (/^[0-9]$/.test(e.key)) setMoonCode((moonCode + e.key).slice(0, s.bloodMoon.codeLength));
+        else if (e.key === "Backspace") setMoonCode(moonCode.slice(0, -1));
+        else if (e.key === "Escape") setMoonCode("");
+        else if (e.key === "Enter" && moonCode) hostCall({ type: "moonCode", code: moonCode }).finally(() => setMoonCode(""));
+        return;
+      }
 
       // Typing a number for the emergency meeting: only digits, Backspace, Enter and Esc work.
       if (typed !== null) {
@@ -170,7 +188,7 @@ function Hub() {
         ) : s.phase === "over" ? (
           <Over s={s} />
         ) : moon ? (
-          <BloodMoon s={s} now={now} />
+          <BloodMoon s={s} now={now} entry={moonCode} />
         ) : (
           <Haunting s={s} now={now} />
         )}
@@ -286,7 +304,7 @@ function Reveal({ s }: { s: View }) {
         <div style={{ display: "flex", flexWrap: "wrap", gap: "2.4vw", justifyContent: "center" }}>
           {s.players.map((p) => (
             <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 12, fontSize: "2vw", opacity: ready.has(p.id) ? 1 : 0.45 }}>
-              <Soul color={p.color} size={30} />
+              <Soul color={p.color} crown={p.crowned} size={30} />
               {p.name}
               <span style={{ color: ready.has(p.id) ? "#7fdc8a" : "var(--dim)" }}>{ready.has(p.id) ? "✓" : "…"}</span>
             </div>
@@ -308,7 +326,7 @@ const RUNE_COUNT = 13;
 function Haunting({ s, now }: { s: View; now: number }) {
   const { done, total } = s.progress;
   const pct = total ? done / total : 0;
-  const saved = s.bloodMoon.savedBy.length > 0 && now - s.bloodMoon.savedAt < 7000;
+  const saved = s.bloodMoon.savedAt > 0 && now - s.bloodMoon.savedAt < 7000;
   return (
     <div className="haunt">
       <div className="haunt-sigil">
@@ -325,7 +343,7 @@ function Haunting({ s, now }: { s: View; now: number }) {
         <div className="overlay fade-in" style={{ background: "rgba(0,0,0,.82)", zIndex: 20 }}>
           <div style={{ fontSize: "9vw", lineHeight: 1 }}>🛡️</div>
           <h1 className="creep glow" style={{ fontSize: "6vw", color: "var(--candle)", lineHeight: 1.1 }}>
-            {s.bloodMoon.savedBy.join(" & ")} saved everyone!
+            The code is in. You’re saved!
           </h1>
           <p className="flavor" style={{ fontSize: "2.6vw" }}>The Blood Moon wanes… for now.</p>
         </div>
@@ -468,38 +486,25 @@ function Sigil({ pct, ring }: { pct: number; ring: number }) {
 
 // ─── Blood Moon ──────────────────────────────────────────────
 
-function BloodMoon({ s, now }: { s: View; now: number }) {
+function BloodMoon({ s, now, entry }: { s: View; now: number; entry: string }) {
   const bm = s.bloodMoon;
   const left = secondsLeft(bm.endsAt, now);
+  const mid = Math.ceil(bm.codeLength / 2);
   return (
     <div style={{ display: "grid", justifyItems: "center", gap: "2.5vh", width: "100%" }}>
-      <div className="moon" style={{ width: "20vh", height: "20vh" }} />
-      <h1 className="creep blood shake" style={{ fontSize: "6vw", lineHeight: 1 }}>Blood Moon!</h1>
-      <p className="creep blood" style={{ fontSize: "8vw", lineHeight: 1 }}>{left}</p>
-      <p style={{ fontSize: "2.4vw", fontWeight: 800 }}>Find the cards and pick them on your phone!</p>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "2vw", width: "70vw" }}>
-        {bm.locations.map((loc, i) => {
-          const by = bm.sealedBy[i];
-          return (
-            <div
-              key={loc}
-              className="panel"
-              style={{
-                padding: "2.5vh 2vw",
-                display: "grid",
-                gap: "1vh",
-                borderColor: by ? "#7fdc8a" : "var(--blood-bright)",
-                boxShadow: by ? "0 0 30px rgba(127,220,138,.25) inset" : undefined,
-              }}
-            >
-              <span style={{ fontSize: "2.6vw", fontWeight: 800, color: "var(--candle)" }}>📍 {loc}</span>
-              <span style={{ fontSize: "2.2vw", fontWeight: 800, color: by ? "#7fdc8a" : "var(--dim)" }}>
-                {by ? `✓ Sealed by ${by}` : "❓ Not found yet"}
-              </span>
-            </div>
-          );
-        })}
+      <div className="moon" style={{ width: "16vh", height: "16vh" }} />
+      <h1 className="creep blood shake" style={{ fontSize: "5.5vw", lineHeight: 1 }}>Blood Moon!</h1>
+      <p className="creep blood" style={{ fontSize: "7vw", lineHeight: 1 }}>{left}</p>
+      <p style={{ fontSize: "2.3vw", fontWeight: 800 }}>Every phone holds half the code. Find the other half!</p>
+      <div className="moon-digits tv">
+        {Array.from({ length: bm.codeLength }, (_, i) => (
+          <Fragment key={i}>
+            {i === mid && <span className="split" />}
+            <span className={`digit ${entry[i] ? "" : "missing"}`}>{entry[i] ?? ""}</span>
+          </Fragment>
+        ))}
       </div>
+      <p style={{ fontSize: "1.8vw", color: "var(--dim)" }}>Type the whole code on the keyboard, then press Enter · ⌫ to fix</p>
     </div>
   );
 }
@@ -528,7 +533,7 @@ function Seance({ s, now }: { s: View; now: number }) {
       <div style={{ display: "grid", gap: "4vh", justifyItems: "center" }}>
         {ejected && (
           <div style={{ animation: "fade-in 1s reverse both 2s" }}>
-            <Soul color={ejected.color} size={130} />
+            <Soul color={ejected.color} size={130} crown={ejected.crowned} />
           </div>
         )}
         <h1 className="creep blood fade-in" style={{ fontSize: "5.5vw", lineHeight: 1.1 }}>{v.title}</h1>
@@ -563,7 +568,7 @@ function Seance({ s, now }: { s: View; now: number }) {
       <div className="seance-souls">
         {s.players.map((p) => (
           <span key={p.id} className={p.alive ? "" : "gone"}>
-            <Soul color={p.color} size={22} dead={!p.alive} />
+            <Soul color={p.color} crown={p.crowned} size={22} dead={!p.alive} />
             {p.name}
             <b>{p.alive && marked.includes(p.id) ? "✓" : ""}</b>
           </span>
@@ -613,7 +618,7 @@ function Over({ s }: { s: View }) {
               borderColor: p.role === "traitor" ? "var(--blood-bright)" : undefined,
             }}
           >
-            <Soul color={p.color} size={32} dead={!p.alive} />
+            <Soul color={p.color} crown={p.crowned} size={32} dead={!p.alive} />
             <strong style={{ fontSize: "2vw" }}>{p.name}</strong>
             <span className={p.role === "traitor" ? "creep blood" : "creep"} style={{ fontSize: "1.8vw" }}>
               {p.role === "traitor" ? "😈 Possessed" : p.special === "lantern" ? "🏮 Lantern Bearer" : "🕯️ Mortal"}

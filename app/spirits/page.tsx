@@ -6,7 +6,7 @@ import { colorHex, useGame, useMounted, useTicker, type View } from "@/lib/clien
 import { Atmos, Soul, winText } from "@/components/shared";
 
 // The Spirit Board: open this on a computer somewhere in the house. It's a talking board
-// seen from above. Every ritual is a candle in the board's two arched rows, lit when it's
+// seen from above. Every ritual is a candle in the board's arched rows, lit when it's
 // done. A planchette drifts to the last candle lit, and the souls sit along the bottom edge
 // showing where each one is heading. It never shows roles, and it goes dark during a Blood Moon.
 export default function SpiritsPage() {
@@ -45,12 +45,13 @@ function Board() {
 
   const live = s && (s.phase === "playing" || s.phase === "meeting" || s.phase === "over");
   const silenced = s?.phase === "playing" && s.bloodMoon.active;
+  const layout = candleLayout(s?.pool.length ?? 0);
 
   return (
     <>
       <Atmos rich red={silenced} />
       <main className="screen sb-room">
-        <div className={`sb-board ${silenced ? "sb-dark" : ""}`}>
+        <div className={`sb-board ${silenced ? "sb-dark" : ""}`} style={{ "--s": layout.scale } as React.CSSProperties}>
           <Corners s={s} live={!!live && !silenced} />
           <h1 className="creep sb-title">The Spirit Board</h1>
 
@@ -65,8 +66,8 @@ function Board() {
             <p className="flavor sb-hint">The candles light when the game begins.</p>
           ) : (
             <>
-              <Candles s={s} />
-              <Planchette s={s} now={now} />
+              <Candles s={s} layout={layout} />
+              <Planchette s={s} now={now} layout={layout} />
               {s.phase === "over" && <p className="creep sb-verdict">{winText(s).title}</p>}
             </>
           )}
@@ -104,28 +105,35 @@ function Corners({ s, live }: { s: View | null; live: boolean }) {
   );
 }
 
-// Where each candle sits: two arched rows, like the letters on a talking board.
-function candleSpots(n: number) {
-  const top = Math.ceil(n / 2);
-  return Array.from({ length: n }, (_, i) => {
-    const row = i < top ? 0 : 1;
-    const count = row === 0 ? top : n - top;
-    const k = row === 0 ? i : i - top;
+// Where each candle sits: arched rows, like the letters on a talking board. Rows fill up
+// sideways first (9 candles at full size, 11 a bit smaller, then 12 smaller still), and only
+// then is another row added, so the names never run into each other. `width` is each
+// candle's share of the board's width; `scale` shrinks the candle and its words.
+function candleLayout(n: number) {
+  const [rows, scale, top, bottom] = n <= 18 ? [2, 1, 37, 58] : n <= 33 ? [3, 0.74, 31, 63] : [4, 0.58, 30, 63];
+  const perRow = Math.max(1, Math.ceil(n / rows));
+  const spread = 80; // % of the board's width a full row spans
+  const gap = perRow > 1 ? spread / (perRow - 1) : spread;
+  const spots = Array.from({ length: n }, (_, i) => {
+    const row = Math.floor(i / perRow);
+    const count = Math.min(perRow, n - row * perRow);
+    const k = i - row * perRow;
     const t = count === 1 ? 0.5 : k / (count - 1); // 0..1 across the row
-    const spread = row === 0 ? 78 : 64;
-    const x = 50 - spread / 2 + t * spread;
-    const lift = row === 0 ? 8 : 5; // how much the row arches up in the middle
-    const y = (row === 0 ? 36 : 56) - Math.sin(t * Math.PI) * lift;
+    const span = gap * (count - 1); // a short last row keeps the same spacing, centred
+    const x = 50 - span / 2 + t * span;
+    const y = top + (row * (bottom - top)) / (rows - 1) - Math.sin(t * Math.PI) * 4 * scale;
     return { x, y };
   });
+  return { spots, scale, width: Math.min(12, gap * 0.94), whisper: rows <= 2 ? 69 : 72.5 };
 }
 
-function Candles({ s }: { s: View }) {
-  const spots = candleSpots(s.pool.length);
+type Layout = ReturnType<typeof candleLayout>;
+
+function Candles({ s, layout }: { s: View; layout: Layout }) {
   return (
     <>
       {s.pool.map((r, i) => (
-        <Candle key={r.id} r={r} s={s} x={spots[i].x} y={spots[i].y} />
+        <Candle key={r.id} r={r} s={s} x={layout.spots[i].x} y={layout.spots[i].y} width={layout.width} />
       ))}
     </>
   );
@@ -136,7 +144,7 @@ const colorOfName = (s: View, name: string | null) => {
   return p ? colorHex(p.color) : "#ffb347";
 };
 
-function Candle({ r, s, x, y }: { r: Ritual; s: View; x: number; y: number }) {
+function Candle({ r, s, x, y, width }: { r: Ritual; s: View; x: number; y: number; width: number }) {
   const state = r.doneBy ? "lit" : r.claimedBy ? "held" : r.lockedBy ? "locked" : r.unlockedBy ? "opened" : "cold";
   const flame = state === "held" ? colorOfName(s, r.claimedBy) : "#ffb347";
   const note =
@@ -150,7 +158,7 @@ function Candle({ r, s, x, y }: { r: Ritual; s: View; x: number; y: number }) {
             ? "🔓 unlocked"
             : r.location;
   return (
-    <div className={`sb-candle ${state}`} style={{ left: `${x}%`, top: `${y}%`, "--flame": flame } as React.CSSProperties}>
+    <div className={`sb-candle ${state}`} style={{ left: `${x}%`, top: `${y}%`, width: `${width}%`, "--flame": flame } as React.CSSProperties}>
       <svg viewBox="0 0 40 70" className="sb-wax" aria-hidden>
         {state === "lit" && <circle cx="20" cy="14" r="16" className="sb-halo" />}
         {(state === "lit" || state === "held") && (
@@ -171,21 +179,23 @@ function Candle({ r, s, x, y }: { r: Ritual; s: View; x: number; y: number }) {
         )}
       </svg>
       <span className="sb-name">{r.name}</span>
-      <span className="sb-note">{note}</span>
+      <span className="sb-note" title={note}>
+        {note}
+      </span>
     </div>
   );
 }
 
 // The planchette glides to the last candle lit and frames its flame in its window,
 // the way a real one frames a letter. Until a candle is lit it rests in the middle.
-function Planchette({ s, now }: { s: View; now: number }) {
-  const spots = candleSpots(s.pool.length);
+function Planchette({ s, now, layout }: { s: View; now: number; layout: Layout }) {
+  const { spots } = layout;
   let last = -1;
   s.pool.forEach((r, i) => {
     if (r.doneBy && (last < 0 || r.doneAt > s.pool[last].doneAt)) last = i;
   });
   const r = last >= 0 ? s.pool[last] : null;
-  const top = r ? `calc(${spots[last].y}% - 3.1vw)` : "50%";
+  const top = r ? `calc(${spots[last].y}% - 3.1vw * var(--s))` : "50%";
   const left = r ? `${spots[last].x}%` : "50%";
   return (
     <>
@@ -199,7 +209,7 @@ function Planchette({ s, now }: { s: View; now: number }) {
           <circle cx="60" cy="92" r="26" className="sb-window" />
         </svg>
       </div>
-      <p className="flavor sb-whisper">
+      <p className="flavor sb-whisper" style={{ top: `${layout.whisper}%` }}>
         {r ? `${r.doneBy} lit ${r.name}, ${ago(now - r.doneAt)}` : "No candle has been lit yet…"}
       </p>
     </>
@@ -230,7 +240,7 @@ function SoulSeat({ p, s }: { p: P; s: View }) {
   const lit = s.pool.filter((r) => r.doneBy === p.name).length;
   return (
     <div className={`sb-seat ${p.alive ? "" : "gone"}`} style={{ "--c": colorHex(p.color) } as React.CSSProperties}>
-      <Soul color={p.color} size={30} dead={!p.alive} />
+      <Soul color={p.color} crown={p.crowned} size={30} dead={!p.alive} />
       <strong>{p.name}</strong>
       <span className="sb-lit">{lit > 0 ? `${lit} lit` : " "}</span>
       <span className="sb-heading">

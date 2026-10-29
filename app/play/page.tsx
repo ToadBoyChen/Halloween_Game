@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { SOUL_COLORS } from "@/config/game";
 import { haunt } from "@/lib/audio";
 import { useEventSounds } from "@/lib/sounds";
@@ -22,7 +22,7 @@ const TOKEN_KEY = "possessed-token";
 const SOUND_KEY = "possessed-sound";
 
 type Me = NonNullable<View["me"]>;
-type Send = (body: Record<string, unknown>) => Promise<boolean>; // true if the action worked
+type Send = (body: Record<string, unknown>) => Promise<View | null>; // the new view if the action worked
 type Sound = { on: boolean; toggle: () => void };
 
 export default function PlayPage() {
@@ -81,13 +81,16 @@ function Phone() {
     try {
       setError(null);
       const v = await post<View & { left?: boolean }>("/api/action", { token, ...body });
-      if (v.left) forget();
-      else accept(v);
-      return true;
+      if (v.left) {
+        forget();
+        return null;
+      }
+      accept(v);
+      return v;
     } catch (e) {
       setError((e as Error).message);
       buzz(80);
-      return false;
+      return null;
     }
   };
 
@@ -345,7 +348,7 @@ function useSwipe(move: (step: 1 | -1) => void) {
 function Lobby({ s, me, send, sound }: { s: View; me: Me; send: Send; sound: Sound }) {
   return (
     <Center>
-      <Soul color={me.color} size={90} />
+      <Soul color={me.color} size={90} crown={me.crowned} />
       <Big>You&apos;re in, {me.name}!</Big>
       <MyNumber s={s} me={me} />
       <LookAtTV>Look at the TV. The game starts soon.</LookAtTV>
@@ -375,9 +378,9 @@ function RoleCard({ me, compact = false }: { me: Me; compact?: boolean }) {
         "Don’t get voted out!",
       ]
     : [
-        "Claim rituals and do them around the house.",
+        "Draw rituals from the pot and do them around the house.",
         "Someone whispers “you’re mine”? You’re dead. Lie still until you’re found.",
-        "Once found, you’re a ghost: finish rituals, silently.",
+        "Once found, you’re a ghost: finish the ritual you had, silently.",
         "Found a body? Report it in ⚡ Actions.",
       ];
   if (lantern) rules.splice(1, 0, "🏮 Once per game, in talk time: pick three players. The TV shows how many are Possessed.");
@@ -503,7 +506,7 @@ function Playing({ s, me, now, send, sound }: { s: View; me: Me; now: number; se
   return (
     <>
       <header style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <Soul color={me.color} size={26} dead={!me.alive} />
+        <Soul color={me.color} size={26} dead={!me.alive} crown={me.crowned} />
         <strong style={{ fontSize: "1.25rem", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {me.name}
         </strong>
@@ -522,7 +525,7 @@ function Playing({ s, me, now, send, sound }: { s: View; me: Me; now: number; se
             <strong style={{ color: "#9fd0ff", fontSize: "1.1rem" }}>{me.ejected ? "You were voted out." : "You are a ghost."} Shh!</strong>
             <div style={{ fontSize: ".95rem" }}>
               {s.players.find((p) => p.id === me.id)?.foundBy ? `${s.players.find((p) => p.id === me.id)!.foundBy} found your body. ` : ""}
-              Don’t talk. You can still finish rituals.
+              Don’t talk. You can finish the ritual you had, but can’t take new ones.
             </div>
             {me.canRevive && (
               <button
@@ -537,7 +540,7 @@ function Playing({ s, me, now, send, sound }: { s: View; me: Me; now: number; se
       )}
 
       {bm.active && me.alive ? (
-        <BloodMoonPanel s={s} me={me} now={now} send={send} />
+        <BloodMoonPanel s={s} me={me} now={now} />
       ) : (
         <>
           <nav className="tabs" role="tablist">
@@ -569,69 +572,59 @@ function Playing({ s, me, now, send, sound }: { s: View; me: Me; now: number; se
   );
 }
 
-// Blood Moon: tap the card you found at each location. Anyone alive can do it,
-// one player can do both, or two players can split up.
-function BloodMoonPanel({ s, me, now, send }: { s: View; me: Me; now: number; send: Send }) {
+// Blood Moon: your phone holds one half of the code. Find someone with the other half,
+// check each other's screens, and type the whole code on the TV keyboard.
+function BloodMoonPanel({ s, me, now }: { s: View; me: Me; now: number }) {
   const bm = s.bloodMoon;
-  const lockIn = secondsLeft(me.sealLockedUntil, now);
-  useOnChange(me.sealLockedUntil > now ? String(me.sealLockedUntil) : null, () => buzz([300, 100, 300]));
+  const h = me.moonHalf;
+  const mid = h ? Math.ceil(h.length / 2) : 0;
+  const other = h?.half === 0 ? "second" : "first";
   return (
     <div className="tab-body">
       <div className="panel" style={{ padding: "10px 14px", borderColor: "var(--blood-bright)", display: "flex", alignItems: "center", gap: 12 }}>
         <span style={{ fontSize: "2.4rem" }}>🌕</span>
         <div style={{ flex: 1 }}>
           <strong className="blood" style={{ fontSize: "1.3rem" }}>BLOOD MOON!</strong>
-          <div style={{ fontWeight: 600 }}>Go find a card, then tap the card you saw.</div>
+          <div style={{ fontWeight: 600 }}>Put the code together and type it on the TV.</div>
         </div>
         <span className="creep blood" style={{ fontSize: "2.8rem" }}>{secondsLeft(bm.endsAt, now)}</span>
       </div>
-      {lockIn > 0 && (
-        <p key={me.sealLockedUntil} className="blood shake" style={{ textAlign: "center", fontWeight: 800, fontSize: "1.15rem" }}>
-          ❌ Wrong card! Try again in {lockIn}s
-        </p>
+      {h && (
+        <section className="panel" style={{ padding: "18px 14px", display: "grid", gap: 14, textAlign: "center", borderColor: "var(--blood-bright)" }}>
+          <p style={{ fontWeight: 800, fontSize: "1.2rem" }}>
+            You have the <span className="blood">{h.half === 0 ? "FIRST" : "SECOND"} half</span>
+          </p>
+          <div className="moon-digits">
+            {Array.from({ length: h.length }, (_, i) => {
+              const mine = h.half === 0 ? i < mid : i >= mid;
+              return (
+                <Fragment key={i}>
+                  {i === mid && <span className="split" />}
+                  <span className={`digit ${mine ? "" : "missing"}`}>{mine ? h.digits[h.half === 0 ? i : i - mid] : "?"}</span>
+                </Fragment>
+              );
+            })}
+          </div>
+        </section>
       )}
-      {bm.locations.map((loc, i) => {
-        const by = bm.sealedBy[i];
-        return (
-          <section key={loc} className="panel moon-slot" style={{ borderColor: by ? "#7fdc8a" : undefined }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
-              <strong style={{ color: "var(--candle)", fontSize: "1.25rem" }}>📍 {loc}</strong>
-              {by && <span style={{ color: "#7fdc8a", fontWeight: 800 }}>✓ Sealed by {by}</span>}
-            </div>
-            {by ? (
-              <p style={{ color: "var(--dim)", fontWeight: 600 }}>This one is done!</p>
-            ) : (
-              <>
-                <p style={{ fontSize: ".95rem", color: "var(--dim)", fontWeight: 600 }}>Which card is at the {loc.toLowerCase()}?</p>
-                <div className="card-row">
-                  {(bm.options[i] ?? []).map((c, j) => (
-                    <button
-                      key={c}
-                      className={`playing-card ${j % 2 ? "red" : ""}`}
-                      disabled={lockIn > 0}
-                      onClick={() => send({ type: "seal", slot: i, card: c })}
-                    >
-                      {c}
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-          </section>
-        );
-      })}
+      <ol className="panel" style={{ padding: "14px 14px 14px 34px", display: "grid", gap: 8, fontSize: "1.1rem", fontWeight: 600 }}>
+        <li>Find someone with the <strong>{other} half</strong>.</li>
+        <li>Show each other your screens. Don’t trust what people say!</li>
+        <li>Run to the TV, type all {h?.length ?? 6} numbers and press Enter.</li>
+      </ol>
     </div>
   );
 }
 
-// Rituals come from one shared pool. Kids play too, so every step is one big, plain choice:
-// tap a ritual to read it → Claim it → "Go do it!" → I did it! (or Give it back).
+// Rituals come from one shared pot. Kids play too, so every step is one big, plain choice:
+// Draw a ritual → Take it (or Put it back) → "Go do it!" → I did it! (or Give it back).
+// Ghosts can finish the one they were holding, but can't draw new ones.
 function RitualsTab({ s, me, now, send }: { s: View; me: Me; now: number; send: Send }) {
   const mine = s.pool.find((r) => r.claimedById === me.id);
-  const [previewId, setPreviewId] = useState<string | null>(null);
   const [cheer, setCheer] = useState<{ kind: "claimed" | "done"; name: string; location: string } | null>(null);
   const [giveBack, setGiveBack] = useState(false);
-  const preview = s.pool.find((r) => r.id === previewId);
+  const drawn = s.pool.find((r) => r.id === me.drawn);
+  useOnChange(me.wrongUntil > now ? String(me.wrongUntil) : null, () => buzz([300, 100, 300]));
 
   if (cheer?.kind === "claimed") {
     return (
@@ -653,7 +646,7 @@ function RitualsTab({ s, me, now, send }: { s: View; me: Me; now: number; send: 
         <div style={{ fontSize: "4.5rem", lineHeight: 1 }}>🎉</div>
         <h2 className="creep" style={{ fontSize: "2.6rem", lineHeight: 1.05, color: "#7fdc8a" }}>Well done!</h2>
         <p style={{ fontSize: "1.3rem", fontWeight: 800 }}>You finished {cheer.name}.</p>
-        <p style={{ fontSize: "1.1rem" }}>Now pick your next ritual.</p>
+        <p style={{ fontSize: "1.1rem" }}>{me.alive ? "Now draw your next ritual." : "That was your last one. Rest now, ghost."}</p>
         <button className="btn primary" style={{ fontSize: "1.6rem", minHeight: 80, marginTop: "auto" }} onClick={() => setCheer(null)}>
           OK!
         </button>
@@ -663,30 +656,55 @@ function RitualsTab({ s, me, now, send }: { s: View; me: Me; now: number; send: 
 
   if (mine) {
     const held = secondsLeft(mine.claimEndsAt, now);
-    const finish = async () => {
-      if (await send({ type: "done", id: mine.id })) setCheer({ kind: "done", name: mine.name, location: mine.location });
+    const wrongIn = secondsLeft(me.wrongUntil, now);
+    // A wrong answer still "works" (it sets a lockout), so only cheer if the ritual really got done.
+    const finish = async (answer?: string) => {
+      const v = await send({ type: "done", id: mine.id, answer });
+      if (v?.pool.find((r) => r.id === mine.id)?.doneBy) setCheer({ kind: "done", name: mine.name, location: mine.location });
     };
     return (
       <div key={mine.id} className="panel task-card fade-in">
         <span className="ritual-where">📍 Go to the {mine.location.toLowerCase()}</span>
         <h3 className="ritual-name">{mine.name}</h3>
         <p className="ritual-how">{mine.instructions}</p>
+        {mine.options.length > 0 && (
+          <section className="answer-box">
+            {wrongIn > 0 ? (
+              <h4 key={me.wrongUntil} className="blood shake">
+                ❌ Wrong! Go look again ({wrongIn}s)
+              </h4>
+            ) : (
+              <h4>🔍 What’s your answer?</h4>
+            )}
+            <div className="answer-grid">
+              {mine.options.map((o) => (
+                <button key={o} className="btn answer" disabled={wrongIn > 0} onClick={() => finish(o)}>
+                  {o}
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
         <div style={{ marginTop: "auto", display: "grid", gap: 10 }}>
-          <button className="btn primary" onClick={finish} style={{ fontSize: "1.6rem", minHeight: 80 }}>
-            ✓ I did it!
-          </button>
+          {mine.options.length === 0 && (
+            <button className="btn primary" onClick={() => finish()} style={{ fontSize: "1.6rem", minHeight: 80 }}>
+              ✓ I did it!
+            </button>
+          )}
           <button className="btn ghost" onClick={() => setGiveBack(true)} style={{ fontSize: "1.2rem" }}>
             ↩ Give it back
           </button>
           <p style={{ textAlign: "center", color: "var(--dim)", fontSize: ".95rem" }}>
-            {held > 0 ? `⏳ ${dur(held)} left to do it` : "⏳ Time’s up! Tap “I did it!” if you finished."}
+            {held > 0 ? `⏳ ${dur(held)} left to do it` : mine.options.length ? "⏳ Time’s up! Answer now if you know it." : "⏳ Time’s up! Tap “I did it!” if you finished."}
           </p>
         </div>
         {giveBack && (
           <div className="overlay fade-in">
             <div style={{ fontSize: "4rem" }}>↩</div>
             <h2 className="creep" style={{ fontSize: "2.2rem", lineHeight: 1.1 }}>Give this ritual back?</h2>
-            <p style={{ margin: "12px 0 24px", fontSize: "1.15rem" }}>Someone else can do it instead. Then you can pick a new one.</p>
+            <p style={{ margin: "12px 0 24px", fontSize: "1.15rem" }}>
+              {me.alive ? "Someone else can do it instead. Then you can draw a new one." : "Ghosts can’t take new rituals, so this would be your last."}
+            </p>
             <div style={{ display: "grid", gap: 12, width: "100%", maxWidth: 340 }}>
               <button
                 className="btn primary"
@@ -708,71 +726,76 @@ function RitualsTab({ s, me, now, send }: { s: View; me: Me; now: number; send: 
     );
   }
 
-  if (preview) {
-    const free = !preview.doneBy && !preview.claimedBy && !preview.lockedBy;
-    const claim = async () => {
-      if (await send({ type: "claim", id: preview.id })) {
-        setPreviewId(null);
-        setCheer({ kind: "claimed", name: preview.name, location: preview.location });
-      }
+  if (!me.alive) {
+    return (
+      <div className="panel task-card fade-in" style={{ textAlign: "center", justifyContent: "center" }}>
+        <div style={{ fontSize: "4rem", lineHeight: 1 }}>👻</div>
+        <h2 className="creep" style={{ fontSize: "2.2rem", lineHeight: 1.1, color: "#9fd0ff" }}>No more rituals for you</h2>
+        <p style={{ fontSize: "1.1rem" }}>Ghosts can’t take new rituals. Haunt quietly and watch the living.</p>
+      </div>
+    );
+  }
+
+  if (drawn) {
+    const free = !drawn.doneBy && !drawn.claimedBy && !drawn.lockedBy;
+    const take = async () => {
+      if (await send({ type: "claim", id: drawn.id })) setCheer({ kind: "claimed", name: drawn.name, location: drawn.location });
     };
     return (
-      <div key={preview.id} className="panel task-card fade-in">
-        <span className="ritual-where">📍 {preview.location}</span>
-        {preview.unlockedBy && (
+      <div key={drawn.id} className="panel task-card fade-in">
+        <span className="ritual-where">📍 {drawn.location}</span>
+        {drawn.unlockedBy && (
           <p className="unlocked-tag" style={{ justifySelf: "start", marginLeft: 0 }}>
-            🔓 Unlocked! “{preview.unlockedBy}” is done.
+            🔓 Unlocked! “{drawn.unlockedBy}” is done.
           </p>
         )}
-        <h3 className="ritual-name">{preview.name}</h3>
-        <p className="ritual-how">{preview.instructions}</p>
+        <h3 className="ritual-name">{drawn.name}</h3>
+        <p className="ritual-how">{drawn.instructions}</p>
         <div style={{ marginTop: "auto", display: "grid", gap: 10 }}>
           {free ? (
-            <button className="btn primary" onClick={claim} style={{ fontSize: "1.6rem", minHeight: 80 }}>
-              ✋ Claim it
-              <small style={{ display: "block", fontSize: ".95rem", fontWeight: 600 }}>You get {dur(s.settings.claimTimeout)} to do it</small>
-            </button>
+            <>
+              <button className="btn primary" onClick={take} style={{ fontSize: "1.6rem", minHeight: 80 }}>
+                ✋ Take it
+                <small style={{ display: "block", fontSize: ".95rem", fontWeight: 600 }}>You get {dur(s.settings.claimTimeout)} to do it</small>
+              </button>
+              <button className="btn ghost" onClick={() => send({ type: "putBack" })} style={{ fontSize: "1.2rem" }}>
+                ↩ Put it back
+              </button>
+            </>
           ) : (
-            <p style={{ textAlign: "center", fontWeight: 800, fontSize: "1.15rem" }}>
-              {preview.doneBy
-                ? `✓ ${preview.doneBy} already did this one`
-                : preview.claimedBy
-                  ? `✋ ${preview.claimedBy} is doing this one`
-                  : `🔒 Do “${preview.lockedBy}” first`}
-            </p>
+            <>
+              <p style={{ textAlign: "center", fontWeight: 800, fontSize: "1.15rem" }}>
+                {drawn.doneBy ? `✓ ${drawn.doneBy} just did this one` : drawn.claimedBy ? `✋ ${drawn.claimedBy} just took this one` : `🔒 Do “${drawn.lockedBy}” first`}
+              </p>
+              <button className="btn primary" onClick={() => send({ type: "draw" })} style={{ fontSize: "1.6rem", minHeight: 80 }}>
+                🎃 Draw another
+              </button>
+            </>
           )}
-          <button className="btn ghost" onClick={() => setPreviewId(null)} style={{ fontSize: "1.2rem" }}>
-            ← Back to the list
-          </button>
         </div>
       </div>
     );
   }
 
-  const free = s.pool.filter((r) => !r.doneBy && !r.claimedBy && !r.lockedBy);
-  const taken = s.pool.filter((r) => !r.doneBy && r.claimedBy);
-  const locked = s.pool.filter((r) => !r.doneBy && !r.claimedBy && r.lockedBy);
-  const done = s.pool.filter((r) => r.doneBy);
+  const left = s.pool.filter((r) => !r.doneBy).length;
+  const open = s.pool.filter((r) => !r.doneBy && !r.claimedBy && !r.lockedBy).length;
+  const doing = s.pool.filter((r) => !r.doneBy && r.claimedBy).length;
 
   return (
-    <div className="ritual-list">
-      <p style={{ fontWeight: 700, fontSize: "1.05rem" }}>👇 Pick a ritual to do</p>
-      {free.map((r) => (
-        <button key={r.id} className={`panel ritual-row ${r.unlockedBy ? "unlocked" : ""}`} onClick={() => setPreviewId(r.id)}>
-          <strong>
-            {r.name}
-            {r.unlockedBy && <span className="unlocked-tag">🔓 Unlocked!</span>}
-          </strong>
-          <span style={{ color: "var(--candle)" }}>📍 {r.location}</span>
-        </button>
-      ))}
-      {free.length === 0 && <p style={{ textAlign: "center", fontWeight: 700 }}>No free rituals right now. Check back soon…</p>}
-      {[...taken, ...locked, ...done].map((r) => (
-        <button key={r.id} className="panel ritual-row off" onClick={() => setPreviewId(r.id)}>
-          <strong style={{ textDecoration: r.doneBy ? "line-through" : "none" }}>{r.name}</strong>
-          <span>{r.doneBy ? `✓ ${r.doneBy}` : r.claimedBy ? `✋ ${r.claimedBy}` : `🔒 After “${r.lockedBy}”`}</span>
-        </button>
-      ))}
+    <div className="panel task-card fade-in" style={{ textAlign: "center", justifyContent: "center" }}>
+      <div style={{ fontSize: "4.5rem", lineHeight: 1 }}>🎃</div>
+      <h2 className="creep glow" style={{ fontSize: "2.4rem", lineHeight: 1.05, color: "var(--candle)" }}>The ritual pot</h2>
+      <p style={{ fontSize: "1.1rem", fontWeight: 700 }}>
+        {left} left · {doing} being done
+      </p>
+      <button
+        className="btn primary"
+        disabled={open === 0}
+        onClick={() => send({ type: "draw" })}
+        style={{ fontSize: "1.6rem", minHeight: 80, marginTop: "auto" }}
+      >
+        {open > 0 ? "🎃 Draw a ritual" : "Pot is empty. Check back soon…"}
+      </button>
     </div>
   );
 }
@@ -824,7 +847,7 @@ function ActionsTab({ s, me, now, send }: { s: View; me: Me; now: number; send: 
         <div className="panel" style={{ flex: 1, display: "grid", placeContent: "center", textAlign: "center", gap: 10, padding: 20 }}>
           <div style={{ fontSize: "3.5rem" }}>👻</div>
           <p className="creep" style={{ fontSize: "2rem", color: "#9fd0ff" }}>Ghosts can’t report bodies</p>
-          <p>You can still finish rituals.</p>
+          <p>You can finish the ritual you had, but can’t take new ones.</p>
         </div>
       </>
     );
@@ -882,7 +905,7 @@ function ActionsTab({ s, me, now, send }: { s: View; me: Me; now: number; send: 
               <div style={{ display: "grid", gap: 10, width: "100%", maxWidth: 340 }}>
                 {others.map((p) => (
                   <button key={p.id} className="btn ghost" style={{ display: "flex", alignItems: "center", gap: 12, fontSize: "1.2rem" }} onClick={() => setBodyId(p.id)}>
-                    <Soul color={p.color} size={22} />
+                    <Soul color={p.color} crown={p.crowned} size={22} />
                     {p.name}
                   </button>
                 ))}
@@ -1014,7 +1037,7 @@ function LanternButton({ s, me, send }: { s: View; me: Me; send: Send }) {
                   overflow: "hidden",
                 }}
               >
-                <Soul color={p.color} size={20} />
+                <Soul color={p.color} crown={p.crowned} size={20} />
                 <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</span>
               </button>
             ))}
@@ -1075,7 +1098,7 @@ function Meeting({ s, me, now, send }: { s: View; me: Me; now: number; send: Sen
         <Big icon="🌀" red>
           You were voted out!
         </Big>
-        <p style={{ fontSize: "1.2rem", fontWeight: 600 }}>You’re a ghost now. No talking, but you can still finish rituals.</p>
+        <p style={{ fontSize: "1.2rem", fontWeight: 600 }}>You’re a ghost now. No talking, but you can finish the ritual you had.</p>
       </Center>
     );
   }
@@ -1156,7 +1179,7 @@ function Meeting({ s, me, now, send }: { s: View; me: Me; now: number; send: Sen
               overflow: "hidden",
             }}
           >
-            <Soul color={p.color} size={22} />
+            <Soul color={p.color} crown={p.crowned} size={22} />
             <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {p.name}
               {p.id === me.id ? " (you)" : ""}

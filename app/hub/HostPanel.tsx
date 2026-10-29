@@ -101,7 +101,7 @@ function Controls({ s, call }: { s: View; call: Call }) {
           </button>
         )}
         <a className="btn ghost" href="/setup" target="_blank" style={{ textAlign: "center" }}>
-          Ritual & card setup list ↗
+          Ritual setup list ↗
         </a>
         <a className="btn ghost" href="/spirits" target="_blank" style={{ textAlign: "center" }}>
           Spirit Board (for the house desktop) ↗
@@ -118,7 +118,7 @@ function Controls({ s, call }: { s: View; call: Call }) {
         {s.players.length === 0 && <p style={{ color: "var(--dim)" }}>No one yet.</p>}
         {s.players.map((p) => (
           <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <Soul color={p.color} size={14} />
+            <Soul color={p.color} crown={p.crowned} size={14} />
             <span style={{ flex: 1 }}>{p.name}</span>
             <button
               className="btn ghost"
@@ -141,7 +141,12 @@ function Controls({ s, call }: { s: View; call: Call }) {
         {s.rituals.map((r) => (
           <label key={r.id} style={{ display: "flex", gap: 10, alignItems: "center", opacity: r.enabled ? 1 : 0.45 }}>
             <input type="checkbox" checked={r.enabled} onChange={() => call({ type: "toggleRitual", id: r.id })} />
-            <span style={{ flex: 1 }}>{r.name}</span>
+            <span style={{ flex: 1 }}>
+              {r.name}
+              {r.blockedBy && (
+                <small style={{ display: "block", color: "var(--blood-bright)" }}>⛓ Won’t appear: needs “{r.blockedBy}” switched on</small>
+              )}
+            </span>
             <span style={{ color: "var(--candle)", fontSize: ".85rem" }}>{r.location}</span>
           </label>
         ))}
@@ -173,7 +178,7 @@ function SettingsForm({ s, call }: { s: View; call: Call }) {
     <Section title="Settings">
       <SettingsEditor settings={s.settings} autoTraitors={s.traitorCount} onChange={(patch) => call({ type: "settings", settings: patch })} />
       <p style={{ color: "var(--dim)", fontSize: ".9rem" }}>
-        Blood Moon cards and locations live in <code>config/bloodmoon.ts</code>. See them on the setup list.
+        The Blood Moon needs no setup: each phone shows half of a code, and players type the whole code on this keyboard.
       </p>
     </Section>
   );
