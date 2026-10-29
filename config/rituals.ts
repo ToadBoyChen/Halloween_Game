@@ -118,7 +118,7 @@ export const RITUALS: Ritual[] = [
   {
     id: "dp1",
     name: "The Dealer's Chip",
-    location: "Kitchen Outside Window",
+    location: "Jay's Fire Pit",
     instructions: "The Dealer's poker chip is cursed apparently. Find it and take it outside. Put it on the kitchen window sill outside.",
   },
   {
@@ -152,8 +152,8 @@ export const RITUALS: Ritual[] = [
   {
     id: "e1",
     name: "Your Balls",
-    location: "Jay's Van",
-    instructions: "You just remembered that all your balls are left all over the fire pit. Find 5 and place them into the green barrel.",
+    location: "Fire Pit",
+    instructions: "You just remembered that your balls are left all over the fire pit. Find 5 and place them into the green barrel.",
   },
   {
     id: "e2",
@@ -168,7 +168,7 @@ export const RITUALS: Ritual[] = [
     location: "The House",
     instructions: "You have your suspicions about a certain player. Find and follow them for a minute.",
   },
-  {
+  { // ==============================================================================================================================
     id: "z1",
     name: "Mechanic",
     location: "Jay's Bathroom",
@@ -186,7 +186,7 @@ export const RITUALS: Ritual[] = [
     location: "Jay's Living Room",
     instructions: "A ghost wants to play chess. Set up the white pieces.",
   }, // 23
-  {
+  { // DONE -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
     id: "z4",
     name: "Cat Cards",
     location: "Living Room",
@@ -227,6 +227,8 @@ export const RITUALS: Ritual[] = [
     name: "Timeless Codes",
     location: "Mantle Piece",
     instructions: "Find a code on top of the mantle piece in the living room and record it now.",
+    answer: "678",
+    choices: ["582", "323", "126", "678", "447", "676"],
   },
   {
     id: "z10",
